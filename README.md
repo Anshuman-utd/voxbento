@@ -1,6 +1,6 @@
-# Eventyay Interpretation Portal
+# Voxbento
 
-Real-time interpretation coordination for Eventyay events.
+Real-time interpretation coordination for  events.
 Interpreters stream live audio via WebRTC/WHIP → MediaMTX → WHEP (WebRTC playback).
 HLS is retained as a fallback delivery path.
 Booth coordination (who is active, relay handoff, chat) runs over WebSocket.
@@ -40,8 +40,8 @@ longer gap (~10–15 s).
 Everything starts with one command. No Python, MediaMTX, or manual config needed.
 
 ```bash
-git clone https://github.com/fossasia/eventyay-interpretation-portal.git
-cd eventyay-interpretation-portal
+git clone https://github.com/fossasia/voxbento.git
+cd voxbento
 docker compose up --build
 ```
 
@@ -63,8 +63,8 @@ To stop: `Ctrl+C` or `docker compose down`.
 **Requirements**: Python 3.13+, [uv](https://github.com/astral-sh/uv), [MediaMTX](https://github.com/bluenviron/mediamtx/releases)
 
 ```bash
-git clone https://github.com/fossasia/eventyay-interpretation-portal.git
-cd eventyay-interpretation-portal
+git clone https://github.com/fossasia/voxbento.git
+cd voxbento
 uv sync                      # install Python dependencies
 ```
 
