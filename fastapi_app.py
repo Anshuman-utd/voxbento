@@ -645,8 +645,14 @@ async def _handle_join(ws: WebSocket, session: Session, data: dict) -> None:
     participant_id = data.get('participant_id')
 
     # Role enforcement: use the server-derived granted_role stored on the session
-    # (populated from cookies at WS connect time). Never trust data['granted_role'].
-    if session.granted_role is not None and not can_perform_role(session.granted_role, role):
+    # (populated from cookies at WS connect time). Never trust data['role'].
+    if session.granted_role is None:
+        await ws.send_text(json.dumps({
+            'type': 'booth:error',
+            'message': 'No role assigned for this session.',
+        }))
+        return
+    if not can_perform_role(session.granted_role, role):
         await ws.send_text(json.dumps({
             'type': 'booth:error',
             'message': f'Your assigned role ({session.granted_role}) does not permit joining as {role}.',
@@ -1281,7 +1287,13 @@ async def admin_add_event_member(request: Request, event_id: int):
     user_id = form.get('user_id', '')
     role = form.get('role', '').strip()
     if user_id:
-        uid = int(user_id)
+        try:
+            uid = int(user_id)
+        except ValueError:
+            return RedirectResponse(
+                url=f'/admin/events/{event_id}/members/',
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
         async with get_session() as session:
             if role:
                 await set_event_membership(session, user_id=uid, event_id=event_id, role=role)
@@ -1389,6 +1401,39 @@ async def ws_booth(websocket: WebSocket, booth_id: str) -> None:
             continue
 
     ws_granted_role = resolve_booth_role(ws_session_payload)
+
+    # For registered users whose token carries no 'role' claim, fall back to
+    # EventMembership in the DB — the same logic the HTTP booth page uses.
+    if ws_granted_role is None and ws_session_payload is not None and ws_session_payload.get('sub'):
+        try:
+            from portal.booth_identity import parse_booth_id as _parse_booth_id
+            from portal.database import get_session as _get_session, list_memberships_for_user as _list_memberships
+            _event_slug, _ = _parse_booth_id(booth_id)
+            async with _get_session() as _db:
+                _memberships = await _list_memberships(_db, int(ws_session_payload['sub']))
+                for _m in _memberships:
+                    if _m.event and _m.event.slug == _event_slug:
+                        ws_granted_role = _m.role
+                        break
+        except Exception:
+            pass
+
+    # Validate invite/participant token scope: the token's (event_slug, language_code)
+    # must match the booth being connected to.  This prevents a valid token for booth A
+    # from being used to join booth B.
+    if ws_session_payload is not None and 'role' in ws_session_payload:
+        token_event = ws_session_payload.get('event_slug', '')
+        token_lang = ws_session_payload.get('language_code', '')
+        if token_event and token_lang:
+            try:
+                from portal.booth_identity import make_booth_id as _make_booth_id
+                expected_booth_id = _make_booth_id(token_event, token_lang)
+                if expected_booth_id != booth_id:
+                    await websocket.close(code=4003)
+                    return
+            except Exception:
+                await websocket.close(code=4003)
+                return
 
     await websocket.accept()
     session = Session(

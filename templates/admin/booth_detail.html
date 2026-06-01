@@ -88,7 +88,7 @@
       <dt>Active Interpreter</dt>
       <dd>
         {% if active_interpreter %}
-        {{ active_interpreter.name }} ({{ active_interpreter.role }})
+        {{ active_interpreter.display_name }} ({{ active_interpreter.role }})
         {% else %}
         <span class="muted">None</span>
         {% endif %}
@@ -117,7 +117,7 @@
       {% for p in participants %}
       <tr>
         <td>
-          {{ p.name or p.participant_id }}
+          {{ p.display_name or p.participant_id }}
           {% if active_interpreter and p.participant_id == active_interpreter.participant_id %}
           <span class="badge badge-active">Active</span>
           {% endif %}

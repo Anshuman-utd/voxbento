@@ -95,8 +95,7 @@ async def require_admin(request: Request) -> None:
     """FastAPI dependency that guards admin routes.
 
     Checks for a valid ``admin_token`` cookie containing a JWT with
-    ``admin=True`` claim.  Returns None on success; raises HTTP 403 or
-    redirects to the login page on failure.
+    ``admin=True`` claim.  Returns None on success; raises HTTP 403 on failure.
     """
     cookie = request.cookies.get('admin_token', '')
     if not cookie:
@@ -156,7 +155,7 @@ async def get_current_user(request: Request) -> dict | None:
 async def require_user(request: Request) -> dict:
     """FastAPI dependency that requires a logged-in user.
 
-    Returns the JWT payload dict with user_id, email, role.
+    Returns the JWT payload dict with user_id, email, and is_admin.
     Raises HTTP 403 if not logged in.
     """
     user = await get_current_user(request)

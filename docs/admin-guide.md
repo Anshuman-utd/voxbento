@@ -120,9 +120,9 @@ Roles are assigned **per event**, not globally. A user can be an `interpreter` f
 
 1. Log in to admin panel → open an **Event** detail page
 2. Click **Manage Members**
-3. Select a registered user from the dropdown
-4. Choose a role → click **Assign Role**
-5. If the user already has a role for this event, it is updated
+3. Find the user in the table
+4. Choose a role from the **Event Role** dropdown (auto-saves on change)
+5. Select "— none —" to remove the role
 
 ### Removing an event role
 
