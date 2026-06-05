@@ -1655,7 +1655,6 @@ async def ws_booth(websocket: WebSocket, booth_id: str) -> None:
                 await _handle_join(websocket, session, data)
             elif msg_type == 'booth:leave':
                 await _handle_leave(session)
-                break
             elif msg_type == 'booth:chat':
                 await _handle_chat(websocket, session, data)
             elif msg_type == 'booth:set-active':

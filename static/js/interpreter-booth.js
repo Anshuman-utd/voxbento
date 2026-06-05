@@ -51,11 +51,8 @@ const elements = {
   jitsiFrame: document.getElementById('jitsi-frame'),
   jitsiUrl: document.getElementById('jitsi-url'),
   joinJitsi: document.getElementById('join-jitsi'),
-  joinBooth: document.getElementById('join-booth'),
-  displayName: document.getElementById('display-name'),
-  role: document.getElementById('participant-role'),
-  language: document.getElementById('booth-language'),
-  channel: document.getElementById('booth-channel'),
+  joinLeaveBtn: document.getElementById('join-leave-btn'),
+  joinLeaveLabel: document.getElementById('join-leave-label'),
   chatForm: document.getElementById('chat-form'),
   chatInput: document.getElementById('chat-input'),
   toggleMic: document.getElementById('toggle-mic'),
@@ -73,7 +70,7 @@ const elements = {
   muteLabel: document.getElementById('mute-label'),
   liveLabel: document.getElementById('live-label'),
   ctrlCompound: document.querySelector('.ctrl-compound'),
-  leaveBooth: document.getElementById('leave-booth-btn'),
+  // leaveBooth removed
   preflightRetry: document.getElementById('preflight-retry'),
   checkMicPermission: document.getElementById('check-mic-permission'),
   checkAudioDevice: document.getElementById('check-audio-device'),
@@ -217,8 +214,29 @@ function authHeaders() {
 // ── Event binding ─────────────────────────────────────────────────────────────
 
 function bindEventHandlers() {
-  elements.joinBooth.addEventListener('click', () => {
-    joinBooth()
+  elements.joinLeaveBtn.addEventListener('click', async () => {
+    if (!state.joined) {
+      joinBooth()
+    } else {
+      if (state.ingestConnected) {
+        await stopLiveIngest()
+      }
+      if (state.micStream) {
+        state.micStream.getTracks().forEach((t) => t.stop())
+        state.micStream = null
+        stopMicMeter()
+      }
+      if (state.joined && state.participantId) {
+        wsSend({ type: 'booth:leave' })
+        state.joined = false
+        state.participantId = null
+        state.participants = []
+        state.activeInterpreterId = null
+        state.chatMessages = []
+        leaveMonitoringFeed()
+        render()
+      }
+    }
   })
 
   elements.jitsiFrame.addEventListener('load', () => {
@@ -305,27 +323,7 @@ function bindEventHandlers() {
     })
   })
 
-  elements.leaveBooth.addEventListener('click', async () => {
-    if (state.ingestConnected) {
-      await stopLiveIngest()
-    }
-    // Release mic stream on explicit leave (stopLiveIngest keeps it for relay handoff)
-    if (state.micStream) {
-      state.micStream.getTracks().forEach((t) => t.stop())
-      state.micStream = null
-      stopMicMeter()
-    }
-    if (state.joined && state.participantId) {
-      wsSend({ type: 'booth:leave' })
-      state.joined = false
-      state.participantId = null
-    }
-    if (state.ws) {
-      state.ws.close(1000)
-      state.ws = null
-    }
-    window.location.reload()
-  })
+
 
   if (navigator.mediaDevices) {
     navigator.mediaDevices.addEventListener('devicechange', () => {
@@ -516,15 +514,8 @@ function applyBoothState(payload, { skipAutoStart = false } = {}) {
 // ── Booth actions ─────────────────────────────────────────────────────────────
 
 function joinBooth() {
-  const displayName = elements.displayName.value.trim()
-  state.language = elements.language.value.trim() || state.language
-  state.channelId = elements.channel.value.trim() || state.channelId
-
-  // The select value is the BOOTH role the user wants to join as.
-  // For roles like event_admin/super_admin, the select offers coordinator
-  // as default so admins don't accidentally take an interpreter slot.
-  // state.grantedRole is only used as fallback if the select has no value.
-  const requestedRole = elements.role.value || state.grantedRole || 'interpreter'
+  const displayName = portal.dataset.displayName || 'Interpreter'
+  const requestedRole = state.grantedRole || 'interpreter'
 
   wsSend({
     type: 'booth:join',
@@ -557,7 +548,7 @@ function joinMonitoringFeed() {
     })
     
     // Add user info to Jitsi URL config
-    const dName = elements.displayName ? elements.displayName.value.trim() : ''
+    const dName = portal.dataset.displayName || 'Interpreter'
     if (dName) {
       hashParams.set('userInfo.displayName', `"${dName}"`)
     }
@@ -1092,6 +1083,13 @@ function renderMicControls() {
 
   elements.goLive.classList.toggle('live', state.ingestConnected)
   if (elements.liveLabel) elements.liveLabel.textContent = state.ingestConnected ? 'STOP' : 'GO LIVE'
+
+  const isJoined = state.joined
+  elements.joinLeaveBtn.title = isJoined ? 'Leave booth' : 'Join booth'
+  elements.joinLeaveBtn.setAttribute('aria-label', isJoined ? 'Leave booth' : 'Join booth')
+  if (elements.joinLeaveLabel) elements.joinLeaveLabel.textContent = isJoined ? 'LEAVE' : 'JOIN'
+  elements.joinLeaveBtn.classList.toggle('ctrl-btn--danger', isJoined)
+  elements.joinLeaveBtn.classList.toggle('ctrl-btn--primary', !isJoined)
 
   elements.toggleMic.disabled = !joinedActiveInterpreter
   const preflightCriticalPass =
