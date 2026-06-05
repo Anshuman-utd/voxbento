@@ -407,6 +407,7 @@ async def interpreter_booth_by_identity(
     await _ensure_mediamtx_path(channel_id)
     whip_url = f'{settings.mediamtx_whip_base}/{mediamtx_path}/whip'
     whep_url = f'{settings.mediamtx_whip_base}/{mediamtx_path}/whep'
+    display_name = payload.get('display_name', '') or payload.get('email', '')
     return templates.TemplateResponse(
         request,
         'interpreter_booth.html',
@@ -420,6 +421,7 @@ async def interpreter_booth_by_identity(
             'whip_url': whip_url,
             'whep_url': whep_url,
             'granted_role': granted_role,
+            'display_name': display_name,
             'default_jitsi_room': settings.default_jitsi_room,
             'default_jitsi_url': _make_jitsi_url(
                 settings.effective_jitsi_base_url, settings.default_jitsi_room
@@ -465,6 +467,7 @@ async def interpreter_booth(
             channel_id = f'{booth_id}-audio'
 
     await _ensure_mediamtx_path(channel_id)
+    display_name = payload.get('display_name', '') or payload.get('email', '')
     return templates.TemplateResponse(
         request,
         'interpreter_booth.html',
@@ -474,6 +477,7 @@ async def interpreter_booth(
             'booth_language': language,
             'booth_channel_id': channel_id,
             'granted_role': granted_role,
+            'display_name': display_name,
             'default_jitsi_room': settings.default_jitsi_room,
             'default_jitsi_url': _make_jitsi_url(
                 settings.effective_jitsi_base_url, settings.default_jitsi_room
@@ -833,8 +837,8 @@ async def register_submit(request: Request):
                     session, email=email, display_name=display_name,
                     password_hash=pw_hash,
                 )
-                token = create_user_token(user_id=user.id, email=user.email, is_admin=user.is_admin)
-                response = safe_redirect(url='/account', status_code=status.HTTP_303_SEE_OTHER)
+                token = create_user_token(user_id=user.id, email=user.email, display_name=user.display_name, is_admin=user.is_admin)
+                response = RedirectResponse(url='/account', status_code=status.HTTP_303_SEE_OTHER)
                 response.set_cookie(
                     key='user_token', value=token,
                     httponly=True, samesite='lax', max_age=settings.jwt_expiry_seconds,
@@ -880,8 +884,8 @@ async def user_login_submit(request: Request):
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    token = create_user_token(user_id=user.id, email=user.email, is_admin=user.is_admin)
-    response = safe_redirect(url='/account', status_code=status.HTTP_303_SEE_OTHER)
+    token = create_user_token(user_id=user.id, email=user.email, display_name=user.display_name, is_admin=user.is_admin)
+    response = RedirectResponse(url='/account', status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         key='user_token', value=token,
         httponly=True, samesite='lax', max_age=settings.jwt_expiry_seconds,
