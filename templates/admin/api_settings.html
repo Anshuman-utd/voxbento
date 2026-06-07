@@ -1,0 +1,63 @@
+{% extends "admin/base.html" %}
+{% block title %}API Settings — {{ event.display_name }}{% endblock %}
+
+{% block breadcrumb %}
+<nav class="breadcrumb">
+  <a href="/admin/">Dashboard</a> <span>/</span>
+  <a href="/admin/events/">Events</a> <span>/</span>
+  <a href="/admin/events/{{ event.id }}/">{{ event.display_name }}</a> <span>/</span>
+  <span>API Settings</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Global API Integrations</h1>
+  <div class="header-meta">
+    <span class="meta-text">Event: {{ event.display_name }}</span>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-header">
+    <h2>Transcription Providers</h2>
+  </div>
+  <p class="muted" style="margin-bottom: 20px;">
+    Configure third-party transcription provider API keys for this event. These keys are securely stored and can be selected by individual booths to power live interpretation without heavily relying on your local server's CPU/RAM.
+  </p>
+
+  <form method="post" action="/admin/events/{{ event.id }}/api-settings" class="card-form" style="max-width: 600px;">
+    
+    <div class="form-group checkbox-group" style="padding: 15px; background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 20px;">
+      <label style="font-weight: 600; display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
+        <input type="checkbox" name="transcription_api_enabled" {% if event.transcription_api_enabled %}checked{% endif %} style="width: auto;">
+        Enable External Transcription APIs for this Event
+      </label>
+      <p class="form-help" style="margin-top: 8px; margin-bottom: 0;">If disabled, booths will only be able to use the Local Faster-Whisper CPU model.</p>
+    </div>
+
+    <div class="form-group">
+      <label for="openai_api_key">OpenAI API Key</label>
+      <input type="password" id="openai_api_key" name="openai_api_key" value="{{ event.openai_api_key or '' }}" placeholder="sk-..." class="input">
+      <p class="form-help">Required for OpenAI Whisper (REST API)</p>
+    </div>
+
+    <div class="form-group">
+      <label for="deepgram_api_key">Deepgram API Key</label>
+      <input type="password" id="deepgram_api_key" name="deepgram_api_key" value="{{ event.deepgram_api_key or '' }}" class="input">
+      <p class="form-help">Required for Deepgram (Fastest streaming captions)</p>
+    </div>
+
+    <div class="form-group">
+      <label for="nvidia_api_key">NVIDIA Parakeet API Key</label>
+      <input type="password" id="nvidia_api_key" name="nvidia_api_key" value="{{ event.nvidia_api_key or '' }}" class="input">
+      <p class="form-help">Required for NVIDIA Parakeet (NVCF endpoint)</p>
+    </div>
+
+    <div class="form-actions" style="margin-top: 30px;">
+      <button type="submit" class="btn btn-primary">Save API Settings</button>
+      <a href="/admin/events/{{ event.id }}/" class="btn" style="background: transparent; border: 1px solid #ccc; margin-left: 10px;">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

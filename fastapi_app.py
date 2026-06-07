@@ -1136,8 +1136,22 @@ async def admin_event_detail(request: Request, event_id: int):
     })
 
 
+@app.get('/admin/events/{event_id}/api-settings/', dependencies=[Depends(require_admin)])
+async def admin_event_api_settings_get(request: Request, event_id: int):
+    from portal.database import get_session, get_event_by_id
+
+    async with get_session() as session:
+        event = await get_event_by_id(session, event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail='Event not found.')
+
+    return templates.TemplateResponse(request, 'admin/api_settings.html', {
+        'event': event,
+    })
+
+
 @app.post('/admin/events/{event_id}/api-settings', dependencies=[Depends(require_admin)])
-async def admin_event_api_settings(
+async def admin_event_api_settings_post(
     request: Request,
     event_id: int,
     transcription_api_enabled: bool | None = Form(False),
@@ -1159,7 +1173,7 @@ async def admin_event_api_settings(
         
         await session.commit()
         
-    return safe_redirect(url=f'/admin/events/{event_id}/', status_code=status.HTTP_303_SEE_OTHER)
+    return safe_redirect(url=f'/admin/events/{event_id}/api-settings/', status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post('/admin/events/{event_id}/delete', dependencies=[Depends(require_admin)])

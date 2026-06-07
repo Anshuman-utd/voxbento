@@ -101,31 +101,9 @@
 <div class="section-card">
   <div class="section-header">
     <h2>Global API Integrations</h2>
+    <a href="/admin/events/{{ event.id }}/api-settings/" class="btn btn-sm btn-primary">Manage API Settings</a>
   </div>
-  <p class="muted" style="margin-bottom: 15px;">Configure third-party transcription provider API keys for this event. These keys are securely stored and can be selected by booths.</p>
-  <form method="post" action="/admin/events/{{ event.id }}/api-settings" class="card-form">
-    <div class="form-group checkbox-group">
-      <label>
-        <input type="checkbox" name="transcription_api_enabled" {% if event.transcription_api_enabled %}checked{% endif %}>
-        Enable External Transcription APIs
-      </label>
-    </div>
-    <div class="form-group">
-      <label for="openai_api_key">OpenAI API Key</label>
-      <input type="password" id="openai_api_key" name="openai_api_key" value="{{ event.openai_api_key or '' }}" placeholder="sk-...">
-    </div>
-    <div class="form-group">
-      <label for="deepgram_api_key">Deepgram API Key</label>
-      <input type="password" id="deepgram_api_key" name="deepgram_api_key" value="{{ event.deepgram_api_key or '' }}">
-    </div>
-    <div class="form-group">
-      <label for="nvidia_api_key">NVIDIA API Key</label>
-      <input type="password" id="nvidia_api_key" name="nvidia_api_key" value="{{ event.nvidia_api_key or '' }}">
-    </div>
-    <div class="form-actions">
-      <button type="submit" class="btn">Save API Settings</button>
-    </div>
-  </form>
+  <p class="muted">Configure third-party transcription provider API keys for this event. These keys are securely stored and can be selected by booths.</p>
 </div>
 
 <div class="danger-zone">
