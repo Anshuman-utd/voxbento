@@ -1159,6 +1159,10 @@ async def admin_event_api_settings_post(
     deepgram_api_key: str | None = Form(None),
     nvidia_api_key: str | None = Form(None),
     elevenlabs_api_key: str | None = Form(None),
+    clear_openai_api_key: bool | None = Form(False),
+    clear_deepgram_api_key: bool | None = Form(False),
+    clear_nvidia_api_key: bool | None = Form(False),
+    clear_elevenlabs_api_key: bool | None = Form(False),
 ):
     from portal.database import get_session, get_event_by_id
 
@@ -1168,13 +1172,25 @@ async def admin_event_api_settings_post(
             raise HTTPException(status_code=404, detail='Event not found.')
         
         event.transcription_api_enabled = bool(transcription_api_enabled)
-        if openai_api_key and openai_api_key.strip():
+        
+        if clear_openai_api_key:
+            event.openai_api_key = None
+        elif openai_api_key and openai_api_key.strip():
             event.openai_api_key = openai_api_key.strip()
-        if deepgram_api_key and deepgram_api_key.strip():
+            
+        if clear_deepgram_api_key:
+            event.deepgram_api_key = None
+        elif deepgram_api_key and deepgram_api_key.strip():
             event.deepgram_api_key = deepgram_api_key.strip()
-        if nvidia_api_key and nvidia_api_key.strip():
+            
+        if clear_nvidia_api_key:
+            event.nvidia_api_key = None
+        elif nvidia_api_key and nvidia_api_key.strip():
             event.nvidia_api_key = nvidia_api_key.strip()
-        if elevenlabs_api_key and elevenlabs_api_key.strip():
+            
+        if clear_elevenlabs_api_key:
+            event.elevenlabs_api_key = None
+        elif elevenlabs_api_key and elevenlabs_api_key.strip():
             event.elevenlabs_api_key = elevenlabs_api_key.strip()
         
         await session.commit()
@@ -1480,6 +1496,16 @@ async def admin_delete_booth(request: Request, event_id: int, room_id: int, boot
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
+def get_provider_api_key(event, provider: str) -> str | None:
+    if provider == 'openai':
+        return event.openai_api_key
+    elif provider == 'deepgram':
+        return event.deepgram_api_key
+    elif provider == 'nvidia':
+        return event.nvidia_api_key
+    elif provider == 'elevenlabs':
+        return event.elevenlabs_api_key
+    return None
 
 @app.post(
     '/admin/events/{event_id}/rooms/{room_id}/booths/{booth_id}/transcription-settings',
@@ -1507,9 +1533,23 @@ async def admin_transcription_settings(
         if transcription_provider not in ALLOWED_PROVIDERS:
             raise HTTPException(status_code=400, detail="Invalid transcription provider")
             
+        ALLOWED_MODELS = {
+            "local": {"tiny", "base", "small", "medium", "large-v3"},
+            "openai": {"whisper-1"},
+            "deepgram": {"nova-2"},
+            "nvidia": {"parakeet-ctc-0_6b-asr", "parakeet-rnnt-1.1b-asr"},
+            "elevenlabs": {"scribe_v2"}
+        }
+        if transcription_model not in ALLOWED_MODELS.get(transcription_provider, set()):
+            raise HTTPException(status_code=400, detail=f"Invalid model '{transcription_model}' for provider '{transcription_provider}'")
+            
         event = await get_event_by_id(session, event_id)
         if event is None:
             raise HTTPException(status_code=404, detail='Event not found.')
+            
+        if transcription_provider != "local":
+            if not get_provider_api_key(event, transcription_provider):
+                raise HTTPException(status_code=400, detail=f"API key for {transcription_provider} is not configured on the event.")
             
         old_enabled = db_booth.transcription_enabled
         old_provider = db_booth.transcription_provider
@@ -1896,15 +1936,7 @@ async def api_transcription_start(
             provider = 'local'
             model_size = 'tiny'
         
-        api_key = None
-        if provider == 'openai':
-            api_key = db_booth.event.openai_api_key
-        elif provider == 'deepgram':
-            api_key = db_booth.event.deepgram_api_key
-        elif provider == 'nvidia':
-            api_key = db_booth.event.nvidia_api_key
-        elif provider == 'elevenlabs':
-            api_key = db_booth.event.elevenlabs_api_key
+        api_key = get_provider_api_key(db_booth.event, provider)
             
         if provider != 'local' and not api_key:
             raise HTTPException(status_code=400, detail=f"{provider} API key missing. Cannot start transcription.")

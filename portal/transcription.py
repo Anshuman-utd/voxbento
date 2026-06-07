@@ -42,6 +42,14 @@ def pcm_to_wav(pcm_data: bytes, sample_rate: int = 16000) -> bytes:
     return buf.getvalue()
 
 # --- Providers ---
+_http_client = None
+
+def get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=10.0)
+    return _http_client
+
 class TranscriptionProvider:
     async def process_chunk(self, chunk: bytes, language_code: str, model_variant: str, api_key: str | None) -> str:
         raise NotImplementedError
@@ -73,14 +81,14 @@ class OpenAIProvider(TranscriptionProvider):
             "language": language_code
         }
         
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post("https://api.openai.com/v1/audio/transcriptions", headers=headers, files=files, data=data, timeout=10.0)
-                if resp.status_code == 200:
-                    return resp.json().get("text", "").strip()
-                else:
-                    logger.error(f"OpenAI error: {resp.text}")
-            except Exception as e:
+        client = get_http_client()
+        try:
+            resp = await client.post("https://api.openai.com/v1/audio/transcriptions", headers=headers, files=files, data=data)
+            if resp.status_code == 200:
+                return resp.json().get("text", "").strip()
+            else:
+                logger.error(f"OpenAI error status={resp.status_code}")
+        except Exception as e:
                 logger.error(f"OpenAI request failed: {e}")
         return ""
 
@@ -97,18 +105,18 @@ class DeepgramProvider(TranscriptionProvider):
         
         url = f"https://api.deepgram.com/v1/listen?model={model_variant}&language={language_code}&encoding=linear16&sample_rate=16000&channels=1"
         
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post(url, headers=headers, content=chunk, timeout=5.0)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    try:
-                        return data["results"]["channels"][0]["alternatives"][0]["transcript"].strip()
-                    except (KeyError, IndexError):
-                        pass
-                else:
-                    logger.error(f"Deepgram error: {resp.text}")
-            except Exception as e:
+        client = get_http_client()
+        try:
+            resp = await client.post(url, headers=headers, content=chunk)
+            if resp.status_code == 200:
+                data = resp.json()
+                try:
+                    return data["results"]["channels"][0]["alternatives"][0]["transcript"].strip()
+                except (KeyError, IndexError):
+                    pass
+            else:
+                logger.error(f"Deepgram error status={resp.status_code}")
+        except Exception as e:
                 logger.error(f"Deepgram request failed: {e}")
         return ""
 
@@ -175,14 +183,14 @@ class ElevenLabsProvider(TranscriptionProvider):
             "language_code": language_code
         }
         
-        async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.post("https://api.elevenlabs.io/v1/speech-to-text", headers=headers, files=files, data=data, timeout=10.0)
-                if resp.status_code == 200:
-                    return resp.json().get("text", "").strip()
-                else:
-                    logger.error(f"ElevenLabs error: {resp.text}")
-            except Exception as e:
+        client = get_http_client()
+        try:
+            resp = await client.post("https://api.elevenlabs.io/v1/speech-to-text", headers=headers, files=files, data=data)
+            if resp.status_code == 200:
+                return resp.json().get("text", "").strip()
+            else:
+                logger.error(f"ElevenLabs error status={resp.status_code}")
+        except Exception as e:
                 logger.error(f"ElevenLabs request failed: {e}")
         return ""
 
@@ -233,7 +241,7 @@ async def transcription_worker(event_slug: str, language_code: str, booth_id: st
             text = await provider.process_chunk(chunk, language_code, model_size, api_key)
             
             if text:
-                logger.info(f"[{booth_id}] Transcribed: {text}")
+                logger.debug(f"[{booth_id}] Transcribed: {text}")
                 await broadcast_callback(booth_id, text)
                 
     except asyncio.IncompleteReadError:

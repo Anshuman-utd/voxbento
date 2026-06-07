@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
+import sqlalchemy as sa
 
 from portal.booth_identity import make_mediamtx_path, validate_event_slug, validate_language_code
 from portal.roles import ALL_ROLES
@@ -126,8 +127,8 @@ class DBBooth(Base):
     language_code: Mapped[str] = mapped_column(String(2))
     language_name: Mapped[str] = mapped_column(String(100))
     transcription_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0')
-    transcription_provider: Mapped[str] = mapped_column(String(20), default='local', server_default="'local'")
-    transcription_model: Mapped[str] = mapped_column(String(20), default='tiny', server_default="'tiny'")
+    transcription_provider: Mapped[str] = mapped_column(String(20), default='local', server_default=sa.text("'local'"))
+    transcription_model: Mapped[str] = mapped_column(String(20), default='tiny', server_default=sa.text("'tiny'"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     event: Mapped[Event] = relationship(back_populates='booths')
