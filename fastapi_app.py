@@ -1524,9 +1524,18 @@ async def admin_transcription_settings(
             elif old_enabled != transcription_enabled or old_provider != transcription_provider or old_model != transcription_model:
                 await stop_transcription_worker(bid)
                 await broadcast_transcription(bid, "")
+                
+                api_key = None
+                if transcription_provider == 'openai':
+                    api_key = event.openai_api_key
+                elif transcription_provider == 'deepgram':
+                    api_key = event.deepgram_api_key
+                elif transcription_provider == 'nvidia':
+                    api_key = event.nvidia_api_key
+                    
                 import asyncio
                 await asyncio.sleep(0.1)
-                await start_transcription_worker(event.slug, db_booth.language_code, bid, broadcast_transcription, transcription_provider, transcription_model)
+                await start_transcription_worker(event.slug, db_booth.language_code, bid, broadcast_transcription, transcription_provider, transcription_model, api_key)
     return safe_redirect(
         url=f'/admin/events/{event_id}/rooms/{room_id}/booths/{booth_id}/',
         status_code=status.HTTP_303_SEE_OTHER,
