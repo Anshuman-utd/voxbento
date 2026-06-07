@@ -1442,7 +1442,6 @@ async def admin_transcription_settings(
 ):
     from portal.database import get_session, get_booth_by_id, get_event_by_id
     from portal.booth_identity import make_booth_id
-    from portal.booth_state import booths
     from portal.transcription import start_transcription_worker, stop_transcription_worker
 
     async with get_session() as session:
@@ -1465,8 +1464,8 @@ async def admin_transcription_settings(
         bid = make_booth_id(event.slug, db_booth.language_code)
         
         # Check if booth is live
-        state = booths.get(bid)
-        is_live = state is not None and state.active_publisher_id is not None
+        state = booths.get_booth_sync(bid)
+        is_live = state is not None and state.active_interpreter_id is not None
         
         if is_live:
             if not transcription_enabled:
