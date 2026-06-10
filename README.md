@@ -2,6 +2,8 @@
 
 Voxbento is a real-time interpretation platform for live events. It provides a browser-first, zero-install experience for simultaneous interpreters, allowing them to monitor the main floor video via Jitsi and broadcast translated audio to attendees with low latency.
 
+**Official Documentation:** [docs.voxbento.com](https://docs.voxbento.com)
+
 Interpreters stream live audio via WebRTC/WHIP → MediaMTX → WHEP (WebRTC playback).
 Booth coordination (who is active, relay handoff, chat) runs over WebSocket.
 
@@ -62,7 +64,7 @@ docker compose up --build
 
 Open http://localhost:8000 — all services are running.
 
-For detailed API documentation, environment variables, port mappings, and native development setup, please see [CONTRIBUTING.md](CONTRIBUTING.md).
+For detailed API documentation, environment variables, and configuration, visit [docs.voxbento.com](https://docs.voxbento.com). Native development setup details can also be found in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

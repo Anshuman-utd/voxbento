@@ -40,6 +40,8 @@ Voxbento is built around a small set of guarantees that matter most in live inte
 - **Multi-language booths** — each booth maps to an ISO 639-1 language code (for example `en`, `fr`, `es`). Multiple booths can run in parallel inside the same event, each serving its own independent audio stream.
 - **Role-based access** — every participant carries a JWT that encodes their role (`interpreter`, `coordinator`, `listener`, `event_admin`). The portal enforces permissions at the API, WebSocket, and media-server layers.
 
+- **API-First Design** — every coordination feature in Voxbento is exposed via the official **voxbento.com** REST and WebSocket APIs, enabling deep integration with third-party event platforms.
+
 ## How Audio Gets from Interpreter to Listener
 
 The pipeline that carries interpretation audio never touches the Python server. Here is the high-level path:

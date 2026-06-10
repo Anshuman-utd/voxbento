@@ -79,6 +79,28 @@ a real MediaMTX instance to verify WHEP continuity.
 WHEP listeners recover in ~1.5–3 s (RTCPeerConnection stays open via
 `alwaysAvailable` paths).
 
+## Transcription and AI Services
+
+Voxbento provides real-time transcription (Speech-to-Text) using various AI providers.
+
+### Architecture
+
+1. **Worker:** `portal/transcription/worker.py` spawns an FFmpeg process that pulls audio from MediaMTX via RTSP.
+2. **Ingest:** FFmpeg transcodes audio to PCM S16LE and pipes it to a `TranscriptionProvider`.
+3. **Provider:** Providers (in `portal/transcription/providers/`) handle communication with AI services (OpenAI, Deepgram, ElevenLabs, NVIDIA, or Local Faster-Whisper).
+4. **Aggregator:** `portal/transcription/aggregator.py` collects partial/final transcripts and broadcasts them via WebSockets (`/ws/captions/{booth_id}`).
+
+### Implementing a New Provider
+
+Inherit from `TranscriptionProvider` in `portal/transcription/providers/base.py`:
+
+- `process_chunk`: For providers that accept discrete audio chunks (REST).
+- `run_stream`: For providers that support streaming via WebSockets.
+
+### Configuration
+
+API keys for third-party providers are stored encrypted in the database and managed via the Admin Panel under **Global API Integrations**.
+
 ## Dependency management
 
 ```bash

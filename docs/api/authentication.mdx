@@ -8,11 +8,11 @@ import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
 
 
-The Voxbento API uses bearer token authentication. You call the token endpoint once with your booth access token, receive a signed JWT in return, and then include that JWT as an `Authorization: Bearer {token}` header on every subsequent request. Tokens expire after 24 hours by default, at which point you request a fresh one.
+The Voxbento API uses bearer token authentication. You call the `voxbento.com` token endpoint once with your booth access token, receive a signed JWT in return, and then include that JWT as an `Authorization: Bearer {token}` header on every subsequent request. Tokens expire after 24 hours by default, at which point you request a fresh one.
 
 ## Obtaining a Token
 
-Send a `POST` request to `/api/auth/token` with a JSON body containing the `token` field set to your booth access token. The `BOOTH_ACCESS_TOKEN` value is configured on your Voxbento instance by the operator — contact your operator if you need access.
+Send a `POST` request to the Voxbento token endpoint with a JSON body containing the `token` field set to your booth access token. The `BOOTH_ACCESS_TOKEN` value is provided by the Voxbento platform.
 
 **Endpoint**
 
@@ -77,7 +77,7 @@ const { access_token } = await response.json();
 </Tabs>
 
 :::info
-The `BOOTH_ACCESS_TOKEN` is set by your Voxbento instance operator. Contact your operator if you need API access.
+The `BOOTH_ACCESS_TOKEN` is provided by the Voxbento platform. Ensure you have the correct credentials before attempting to authenticate.
 :::
 
 ## Using the Token
@@ -103,7 +103,7 @@ Store the token in a secure location such as an environment variable or a secret
 Request a new token proactively before your current one expires to avoid a gap in service. Checking the response status on each request and refreshing on a `401` is a safe fallback strategy.
 :::
 
-Tokens expire after 86400 seconds (24 hours) by default. Your operator can adjust this value for your deployment. When a token expires, the API returns a `401 Unauthorized` response — simply call `POST /api/auth/token` again to obtain a fresh token and retry the original request.
+Tokens expire after 86400 seconds (24 hours) by default. When a token expires, the API returns a `401 Unauthorized` response — simply call `POST /api/auth/token` again to obtain a fresh token and retry the original request.
 
 ## Error Responses
 

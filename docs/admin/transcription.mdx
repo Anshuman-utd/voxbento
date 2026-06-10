@@ -60,9 +60,15 @@ For the lowest latency captions, Deepgram `nova-2` (WebSocket streaming) is an e
 </TabItem>
   <TabItem value="elevenlabs" label="ElevenLabs">
 
-Uses ElevenLabs' `scribe_v2` model. Requires an ElevenLabs API key stored in the event's API settings.
+Uses ElevenLabs' **Speech-to-Text** (Scribe) service. Requires an ElevenLabs API key stored in the event's API settings.
 
-**Models available:** `scribe_v2`
+**Models available:** `scribe_v2_realtime`
+
+ElevenLabs Scribe provides high-accuracy transcription for various languages and supports low-latency streaming.
+
+:::info
+While ElevenLabs is widely known for Text-to-Speech, Voxbento utilizes their **Scribe** service specifically for high-quality **Speech-to-Text** (transcription).
+:::
 
 </TabItem>
   <TabItem value="nvidia-riva" label="NVIDIA Riva">
@@ -119,6 +125,18 @@ Choose a **Provider** from the dropdown — for example, `deepgram`. Then select
   ### Save
 
 Click **Save**. If the booth is currently live (an interpreter is broadcasting), the transcription worker restarts immediately with the new settings. There is no need to wait for the next session.
+
+## Caption Logic and Finalization
+
+Voxbento's caption aggregator applies several rules to ensure captions are readable and delivered efficiently:
+
+- **Sentence Splitting:** For batch providers (like Local Whisper), Voxbento automatically splits transcripts into sentences based on punctuation (`.`, `?`, `!`) to deliver stable, finalized text as soon as a thought is complete.
+- **Forced Finalization:** To prevent captions from staying in a "partial" state too long, Voxbento forces a finalization if a single utterance exceeds **15 seconds** or **50 words**.
+- **Silence Detection:** If the provider detects a significant pause in speech, the current partial caption is automatically finalized and cleared to prepare for the next sentence.
+
+:::info
+All caption coordination and delivery is handled via the official `voxbento.com` WebSocket endpoints, ensuring a consistent experience for all listeners.
+:::
 
 ## Caption Delivery and Message Format
 

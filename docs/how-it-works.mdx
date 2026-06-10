@@ -61,6 +61,20 @@ Listeners connect to the WHEP endpoint for their chosen language. WHEP (WebRTC H
 You do not need to configure the fallback manually. The listener page tries WHEP first and switches to HLS transparently if the WebRTC negotiation fails.
 :::
 
+## The Transcription Pipeline
+
+When live captions are enabled, Voxbento spawns a background transcription worker to process the active interpreter's audio.
+
+1. **Audio Ingest:** The worker uses FFmpeg to pull the live audio stream from MediaMTX via RTSP (`rtsp://mediamtx:8554/{event_slug}/{language_code}`).
+2. **Transcoding:** FFmpeg transcodes the audio to PCM S16LE (mono, 16kHz or 24kHz depending on the provider) and pipes it to the selected `TranscriptionProvider`.
+3. **AI Processing:** The provider sends audio chunks or a continuous stream to an AI service (OpenAI, Deepgram, ElevenLabs, NVIDIA, or Local Whisper).
+4. **Caption Aggregation:** The `CaptionAggregator` receives raw text from the provider. It applies logic to split sentences on punctuation (for batch providers) or handles real-time partial updates (for streaming providers).
+5. **Broadcast:** Caption updates are broadcast to listeners via the dedicated WebSocket at `wss://voxbento.com/ws/captions/{booth_id}`.
+
+:::info
+Transcription workers are isolated from the main audio path. If a transcription worker fails or encounters high latency, the interpretation audio remains unaffected.
+:::
+
 ## Booth Identity
 
 Every booth in Voxbento is uniquely identified by two coordinates:

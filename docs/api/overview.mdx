@@ -8,7 +8,7 @@ The Voxbento REST API gives you programmatic control over booths and events, let
 
 ## Base URL
 
-All API requests target your Voxbento instance. Replace the example domain with your own deployment address throughout this documentation.
+All API requests for Voxbento services target the official `voxbento.com` domain. 
 
 ```text
 https://voxbento.com
@@ -65,7 +65,7 @@ A healthy response looks like this:
 If `mediamtx_ok` is `false`, interpreter ingest and listener playback will be unavailable even if the portal itself is running.
 
 :::info
-Use `mediamtx_ok` to determine whether the media server is reachable before starting a stream. If it is `false`, check the MediaMTX service logs on your deployment.
+Use `mediamtx_ok` to determine whether the media server is reachable before starting a stream. If it is `false`, the underlying media services may be unavailable.
 :::
 
 ## Explore the API

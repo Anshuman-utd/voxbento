@@ -37,7 +37,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/fossasia/voxbento/tree/main/docs/',
+          editUrl: 'https://github.com/fossasia/voxbento/edit/main/',
         },
         blog: false,
         theme: {
