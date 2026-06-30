@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 import httpx
 
@@ -34,6 +35,25 @@ _room_pipelines: dict[int, "_RoomTTSPipeline"] = {}
 # streaming), preventing them from being garbage collected before they finish.
 _inflight: set[asyncio.Task] = set()
 
+# Per-room TTS config cache: room_id -> (monotonic_expiry, cfg_or_None).
+#
+# A finalized caption segment arrives many times per minute per room, while the
+# room/event config (including Fernet-decrypted API keys) almost never changes
+# mid-session. Caching it behind a short TTL removes a DB round trip plus a key
+# decrypt per segment. A None result (TTS disabled) is cached too so disabled
+# rooms are not re-queried on every segment.
+_config_cache: dict[int, tuple[float, dict | None]] = {}
+_CONFIG_TTL_SECONDS = 300.0
+
+
+def invalidate_room_config(room_id: int) -> None:
+    """Drop a room's cached TTS config so the next segment reloads it.
+
+    Call after a room's TTS settings or API keys are edited so changes take
+    effect immediately instead of waiting for the TTL to expire.
+    """
+    _config_cache.pop(room_id, None)
+
 
 def enqueue_tts(room_id: int, text: str) -> None:
     """Queue a finalized segment for TTS synthesis.
@@ -63,7 +83,7 @@ async def _route(room_id: int, text: str) -> None:
     from portal.websockets.manager import tts_manager
 
     worker = TTSWorker(tts_manager.broadcast_audio)
-    cfg = await worker._load_config(room_id)
+    cfg = await worker._load_config_cached(room_id)
     if not cfg:
         return
 
@@ -126,7 +146,7 @@ class TTSWorker:
         Deepgram streams the live LLM translation straight to its Speak API;
         Supertonic translates fully, then synthesizes each sentence in order.
         """
-        cfg = await self._load_config(room_id)
+        cfg = await self._load_config_cached(room_id)
         if not cfg:
             return
         if cfg["tts_provider_name"] == TTSProviderEnum.SUPERTONIC.value:
@@ -135,6 +155,16 @@ class TTSWorker:
                 await self._synthesize_buffered(cfg, items)
         else:
             await self._stream_live(cfg, text)
+
+    async def _load_config_cached(self, room_id: int) -> dict | None:
+        """Return the room's TTS config from cache, loading it on a miss or expiry."""
+        now = time.monotonic()
+        entry = _config_cache.get(room_id)
+        if entry is not None and entry[0] > now:
+            return entry[1]
+        cfg = await self._load_config(room_id)
+        _config_cache[room_id] = (now + _CONFIG_TTL_SECONDS, cfg)
+        return cfg
 
     async def _load_config(self, room_id: int) -> dict | None:
         """Load room/event TTS config and build the provider, or None if disabled."""

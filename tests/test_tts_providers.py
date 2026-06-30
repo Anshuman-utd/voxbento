@@ -128,11 +128,14 @@ class TestWorkerProviderRouting:
     @pytest.fixture(autouse=True)
     async def setup_db(self):
         from portal.database import configure, dispose, init_db
+        from portal.tts import worker as worker_mod
 
+        worker_mod._config_cache.clear()
         configure("sqlite+aiosqlite://")
         await init_db()
         yield
         await dispose()
+        worker_mod._config_cache.clear()
 
     async def _seed_room(self, *, tts_provider: str, voice: str = "M1"):
         from portal.database import create_event, create_room, get_session
@@ -225,4 +228,92 @@ class TestWorkerProviderRouting:
 
         assert called["factory"] is False
         assert broadcasts == []
+
+
+@pytest.mark.anyio
+class TestConfigCache:
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        from portal.tts import worker as worker_mod
+
+        worker_mod._config_cache.clear()
+        yield
+        worker_mod._config_cache.clear()
+
+    async def test_cache_hit_avoids_second_load(self, monkeypatch):
+        from portal.tts.worker import TTSWorker
+
+        calls = {"n": 0}
+        sentinel = {"room_id": 7, "tts_provider_name": "supertonic"}
+
+        async def fake_load(self, room_id):
+            calls["n"] += 1
+            return sentinel
+
+        monkeypatch.setattr(TTSWorker, "_load_config", fake_load)
+        worker = TTSWorker(None)
+
+        first = await worker._load_config_cached(7)
+        second = await worker._load_config_cached(7)
+
+        assert first is sentinel
+        assert second is sentinel
+        assert calls["n"] == 1
+
+    async def test_ttl_expiry_forces_reload(self, monkeypatch):
+        from portal.tts import worker as worker_mod
+        from portal.tts.worker import TTSWorker
+
+        calls = {"n": 0}
+
+        async def fake_load(self, room_id):
+            calls["n"] += 1
+            return {"room_id": room_id}
+
+        monkeypatch.setattr(TTSWorker, "_load_config", fake_load)
+        worker = TTSWorker(None)
+
+        await worker._load_config_cached(7)
+        # Force the cached entry to look expired without sleeping.
+        _, cfg = worker_mod._config_cache[7]
+        worker_mod._config_cache[7] = (0.0, cfg)
+        await worker._load_config_cached(7)
+
+        assert calls["n"] == 2
+
+    async def test_invalidate_clears_entry(self, monkeypatch):
+        from portal.tts import worker as worker_mod
+        from portal.tts.worker import TTSWorker
+
+        calls = {"n": 0}
+
+        async def fake_load(self, room_id):
+            calls["n"] += 1
+            return {"room_id": room_id}
+
+        monkeypatch.setattr(TTSWorker, "_load_config", fake_load)
+        worker = TTSWorker(None)
+
+        await worker._load_config_cached(7)
+        assert 7 in worker_mod._config_cache
+        worker_mod.invalidate_room_config(7)
+        assert 7 not in worker_mod._config_cache
+        await worker._load_config_cached(7)
+        assert calls["n"] == 2
+
+    async def test_disabled_room_none_is_cached(self, monkeypatch):
+        from portal.tts.worker import TTSWorker
+
+        calls = {"n": 0}
+
+        async def fake_load(self, room_id):
+            calls["n"] += 1
+            return None
+
+        monkeypatch.setattr(TTSWorker, "_load_config", fake_load)
+        worker = TTSWorker(None)
+
+        assert await worker._load_config_cached(7) is None
+        assert await worker._load_config_cached(7) is None
+        assert calls["n"] == 1
 
