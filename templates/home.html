@@ -10,8 +10,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- Custom CSS for animations and overrides -->
-    <link rel="stylesheet" href="{{ url_for('static', path='css/landing.css') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/landing.css') }}?v={{ js_version }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}?v={{ js_version }}" />
     
     <script>
         tailwind.config = {
@@ -666,7 +666,7 @@
             </div>
         </div>
     </footer>
-    <script type="module" src="{{ url_for('static', path='js/home.js') }}"></script>
-    <script type="module" src="{{ url_for('static', path='js/demo-player.js') }}"></script>
+    <script type="module" src="{{ url_for('static', path='js/home.js') }}?v={{ js_version }}"></script>
+    <script type="module" src="{{ url_for('static', path='js/demo-player.js') }}?v={{ js_version }}"></script>
 </body>
 </html>
