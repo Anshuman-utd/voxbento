@@ -273,7 +273,7 @@ async def request_magic_link(request: Request):
 
 
 @router.get("/auth/magic/{token}")
-async def redeem_magic_link(request: Request, token: str):
+async def redeem_magic_link(request: Request, token: str, next: str | None = None):
     async with get_session() as session:
         try:
             auth_token = await redeem_auth_token(session, token, "magic_link")
@@ -288,7 +288,8 @@ async def redeem_magic_link(request: Request, token: str):
             jwt_token = create_user_token(
                 user_id=user.id, email=user.email, display_name=user.display_name, is_admin=user.is_admin
             )
-            response = safe_redirect(url="/account", status_code=status.HTTP_303_SEE_OTHER)
+            redirect_to = next if next and next.startswith("/") and not next.startswith("//") else "/account"
+            response = safe_redirect(url=redirect_to, status_code=status.HTTP_303_SEE_OTHER)
             response.set_cookie(
                 key="user_token",
                 value=jwt_token,
