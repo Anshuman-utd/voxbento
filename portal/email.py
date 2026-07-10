@@ -79,10 +79,23 @@ async def send_magic_login_email(email_to: str, token: str) -> None:
 
 
 async def send_password_reset_email(email_to: str, token: str) -> None:
-    reset_link = f"{settings.public_base_url}/auth/reset/{token}"
+    reset_url = f"{settings.public_base_url}/auth/reset/{token}"
     await _send_email_async(
         email_to=email_to,
         subject="Reset your VoxBento password",
         template_name="password_reset.html",
-        template_body={"reset_link": reset_link},
+        template_body={"reset_link": reset_url},
+    )
+
+
+async def send_role_invite_email(email_to: str, invite_url: str, role_name: str, context_name: str) -> None:
+    await _send_email_async(
+        email_to=email_to,
+        subject=f"You have been invited to join as {role_name} on VoxBento",
+        template_name="role_invite.html",
+        template_body={
+            "role_name": role_name,
+            "context_name": context_name,
+            "invite_url": invite_url,
+        },
     )
