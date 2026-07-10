@@ -14,6 +14,7 @@ from portal.auth import (
     create_user_token,
     get_current_user,
     hash_password,
+    require_user,
     verify_password,
 )
 from portal.config import settings
@@ -117,7 +118,7 @@ async def register_submit(request: Request):
         errors.append("Valid email is required.")
     if not display_name:
         errors.append("Display name is required.")
-    
+
     if not errors:
         async with get_session() as session:
             existing = await get_user_by_email(session, email)
@@ -132,7 +133,7 @@ async def register_submit(request: Request):
                     password_hash=pw_hash,
                     email_verified=False,
                 )
-                
+
                 # Send verification email
                 import secrets
                 token_val = secrets.token_hex(32)
@@ -143,7 +144,7 @@ async def register_submit(request: Request):
                     token_type="verification",  # nosec B105
                 )
                 await send_verification_email(email, token_val)
-                
+
                 return templates.TemplateResponse(
                     request,
                     "register_success.html",
@@ -164,7 +165,7 @@ async def verify_email_route(request: Request, token: str):
         try:
             auth_token = await redeem_auth_token(session, token, "verification")
             user = await update_user(session, auth_token.user_id, email_verified=True)
-            
+
             jwt_token = create_user_token(
                 user_id=user.id, email=user.email, display_name=user.display_name, is_admin=user.is_admin
             )
@@ -247,7 +248,7 @@ async def user_login_submit(request: Request):
 async def request_magic_link(request: Request):
     data = await request.json()
     email = data.get("email", "").strip().lower()
-    
+
     if not check_rate_limit("magic_link", email, max_requests=5, window_seconds=3600):
         raise HTTPException(status_code=429, detail="Too many requests")
 
@@ -263,7 +264,7 @@ async def request_magic_link(request: Request):
                 token_type="magic_link",  # nosec B105
             )
             await send_magic_login_email(email, token_val)
-    
+
     return {"status": "ok"}
 
 
@@ -275,11 +276,11 @@ async def redeem_magic_link(request: Request, token: str):
             user = await get_user_by_id(session, auth_token.user_id)
             if not user.is_active:
                 raise ValueError("Account deactivated")
-            
+
             # If they log in via magic link, we can implicitly consider their email verified
             if not user.email_verified:
                 await update_user(session, user.id, email_verified=True)
-            
+
             jwt_token = create_user_token(
                 user_id=user.id, email=user.email, display_name=user.display_name, is_admin=user.is_admin
             )
@@ -300,7 +301,7 @@ async def redeem_magic_link(request: Request, token: str):
 async def forgot_password_request(request: Request):
     data = await request.json()
     email = data.get("email", "").strip().lower()
-    
+
     if not check_rate_limit("forgot_password", email, max_requests=5, window_seconds=3600):
         raise HTTPException(status_code=429, detail="Too many requests")
 
@@ -316,7 +317,7 @@ async def forgot_password_request(request: Request):
                 token_type="password_reset",  # nosec B105
             )
             await send_password_reset_email(email, token_val)
-    
+
     return {"status": "ok"}
 
 
@@ -329,7 +330,7 @@ async def reset_password_page(request: Request, token: str):
 async def reset_password_submit(request: Request, token: str):
     form = await request.form()
     password = form.get("password", "")
-    
+
     if len(password) < 8:
         return templates.TemplateResponse(
             request, "reset_password.html", {"token": token, "error": "Password must be at least 8 characters"}
@@ -340,7 +341,7 @@ async def reset_password_submit(request: Request, token: str):
             auth_token = await redeem_auth_token(session, token, "password_reset")
             pw_hash = hash_password(password)
             user = await update_user(session, auth_token.user_id, password_hash=pw_hash)
-            
+
             jwt_token = create_user_token(
                 user_id=user.id, email=user.email, display_name=user.display_name, is_admin=user.is_admin
             )
@@ -424,14 +425,14 @@ async def set_password_api(request: Request):
     user_token = await require_user(request)
     data = await request.json()
     password = data.get("password", "")
-    
+
     if len(password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
-        
+
     async with get_session() as session:
         pw_hash = hash_password(password)
         await update_user(session, int(user_token["sub"]), password_hash=pw_hash)
-    
+
     return {"status": "ok"}
 
 
@@ -440,15 +441,15 @@ async def remove_password_api(request: Request):
     user_token = await require_user(request)
     data = await request.json()
     password = data.get("password", "")
-    
+
     async with get_session() as session:
         user = await get_user_by_id(session, int(user_token["sub"]))
         if not user or not user.password_hash:
             raise HTTPException(status_code=400, detail="User has no password")
-            
+
         if not verify_password(password, user.password_hash):
             raise HTTPException(status_code=403, detail="Invalid password")
-            
+
         await update_user(session, user.id, password_hash=None)
-    
+
     return {"status": "ok"}

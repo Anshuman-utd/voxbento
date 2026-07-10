@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
-from pydantic import EmailStr
 
 from portal.config import settings
 

@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime
 from datetime import datetime, timedelta, timezone
 
 import sqlalchemy as sa
@@ -742,7 +741,7 @@ async def save_transcript_segment(booth_id_str: str, text: str, room_id: int | N
     """Save a finalized transcript segment to the database asynchronously and return its ID."""
     from sqlalchemy import select
 
-    from portal.models import DBBooth, Event, TranscriptSegment
+    from portal.models import DBBooth, Event
 
     parts = booth_id_str.split("-")
     if len(parts) < 2:
