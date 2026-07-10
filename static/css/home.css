@@ -268,7 +268,7 @@
   display: inline-block;
   width: 100%;
   height: 100%;
-  background: #0d0f10;
+  background: #2563eb;
   border-radius: 9999px;
   box-sizing: border-box;
   box-shadow: 2px 2px 0px rgba(13, 15, 16, 0.5);
@@ -288,7 +288,7 @@
 }
 
 .toggle-cont .toggle-input:checked + .toggle-label .cont-label-play {
-  background: #2563eb;
+  background: #0d0f10;
   transform: translateX(28px);
 }
 

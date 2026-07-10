@@ -157,13 +157,29 @@ function activateLangButton(code) {
         const isActive = btn.dataset.heroLang === code;
         const check = btn.querySelector(".hero-check");
         if (isActive) {
-            btn.classList.add("bg-slate-800", "text-white");
-            btn.classList.remove("text-slate-400");
+            // Active: Blue background, white text, thick border
+            btn.classList.add("bg-[#2563eb]", "text-white", "border-[3px]", "border-[#2563eb]");
+            btn.classList.remove("bg-white", "text-[#0d0f10]", "border-2", "border-[#0d0f10]", "hover:bg-slate-100", "bg-[#0d0f10]");
             if (check) check.style.opacity = "1";
+            
+            // Adjust AI badge to be readable on blue
+            const badge = btn.querySelector("span > span");
+            if (badge) {
+                badge.classList.remove("bg-[#2563eb]", "text-white", "border-[#0d0f10]");
+                badge.classList.add("bg-white", "text-[#2563eb]", "border-transparent");
+            }
         } else {
-            btn.classList.remove("bg-slate-800", "text-white");
-            btn.classList.add("text-slate-400");
+            // Inactive: White background, black text, standard border, hover effect
+            btn.classList.remove("bg-[#2563eb]", "bg-[#0d0f10]", "text-white", "border-[3px]", "border-[#2563eb]");
+            btn.classList.add("bg-white", "text-[#0d0f10]", "border-2", "border-[#0d0f10]", "hover:bg-slate-100");
             if (check) check.style.opacity = "0";
+            
+            // Restore AI badge
+            const badge = btn.querySelector("span > span");
+            if (badge) {
+                badge.classList.add("bg-[#2563eb]", "text-white", "border-[#0d0f10]");
+                badge.classList.remove("bg-white", "text-[#2563eb]", "border-transparent");
+            }
         }
     });
 }
