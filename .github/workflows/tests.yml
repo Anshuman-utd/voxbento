@@ -259,6 +259,7 @@ jobs:
 
           # Manually verify the user's email since we can't click the magic link in CI
           docker exec $(docker compose ps -q portal) python -c "
+          docker exec $(docker compose ps -q portal) uv run python -c "
           import asyncio
           from portal.database import get_session, update_user, get_user_by_email
           async def verify():
