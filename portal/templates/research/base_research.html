@@ -120,6 +120,22 @@
     .research-content tr:last-child td {
         border-bottom: none;
     }
+    .research-content pre {
+        overflow-x: auto;
+    }
+    @media (max-width: 640px) {
+        /* Tighter cells let most comparison tables fit a phone screen; any that are still
+           wider scroll inside themselves instead of widening the page. */
+        .research-content table {
+            display: block;
+            overflow-x: auto;
+            font-size: 0.8125rem;
+        }
+        .research-content th, .research-content td {
+            padding: 8px 6px;
+            hyphens: auto;
+        }
+    }
     .disclaimer-box {
         background: #fffaf0;
         border: 1px solid #feebc8;
