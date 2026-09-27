@@ -33,8 +33,8 @@ from portal.database import (
 )
 from portal.email import send_magic_login_email, send_password_reset_email, send_verification_email
 from portal.email_sender import send_delayed_onboarding_email
-from portal.limiter import limiter
 from portal.globals import _JS_CACHE_BUST
+from portal.limiter import limiter
 from portal.rate_limit import check_rate_limit
 from portal.schemas.auth import TokenRequest, TokenResponse
 from portal.utils import safe_redirect
