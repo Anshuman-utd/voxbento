@@ -31,6 +31,7 @@ class AppLimiter(Limiter):
 limiter = AppLimiter(
     key_func=get_remote_address,
     default_limits=[],
+    enabled=settings.rate_limit_enabled,
 )
 
 
