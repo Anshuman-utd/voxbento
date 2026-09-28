@@ -473,7 +473,10 @@ class RoomUpsert(BaseModel):
         return validated
 
 
-def _sync_transcription_settings(room: Room, payload_dict: dict) -> None:
+
+
+def _sync_floor_transcription_settings(room: Room, payload_dict: dict) -> None:
+    """Apply floor transcription configuration and source language to the room instance."""
     if "enable_transcription" in payload_dict and payload_dict["enable_transcription"] is not None:
         room.floor_transcription_enabled = payload_dict["enable_transcription"]
     if "transcription_provider" in payload_dict:
@@ -485,7 +488,8 @@ def _sync_transcription_settings(room: Room, payload_dict: dict) -> None:
         room.floor_language_code = payload_dict["source_language"]
 
 
-def _sync_translation_settings(room: Room, payload_dict: dict) -> None:
+def _sync_floor_translation_settings(room: Room, payload_dict: dict) -> None:
+    """Apply floor translation configuration to the room instance."""
     if "enable_translation" in payload_dict and payload_dict["enable_translation"] is not None:
         room.floor_translation_enabled = payload_dict["enable_translation"]
     if "translation_provider" in payload_dict:
@@ -495,10 +499,11 @@ def _sync_translation_settings(room: Room, payload_dict: dict) -> None:
 
 
 def _apply_room_settings(room: Room, payload_dict: dict) -> None:
+    """Apply display name, floor transcription, and floor translation settings to the room."""
     if "name" in payload_dict and payload_dict["name"] is not None:
         room.display_name = payload_dict["name"]
-    _sync_transcription_settings(room, payload_dict)
-    _sync_translation_settings(room, payload_dict)
+    _sync_floor_transcription_settings(room, payload_dict)
+    _sync_floor_translation_settings(room, payload_dict)
 
 
 async def _create_or_update_base_room(
@@ -507,6 +512,7 @@ async def _create_or_update_base_room(
     eventyay_room_id: str,
     payload_dict: dict,
 ) -> tuple[Room, str, int]:
+    """Create or update the base room while preserving upsert and concurrency transaction semantics."""
     room_res = await db.execute(
         select(Room).where(Room.event_id == event.id, Room.eventyay_room_id == eventyay_room_id)
     )
@@ -555,6 +561,7 @@ async def _delete_removed_languages_and_booths(
     existing_langs: dict[str, RoomTranslationLanguage],
     token: OAuthToken,
 ) -> None:
+    """Delete unrequested booths and languages, enforcing active-session safety checks."""
     from portal.booth_identity import make_booth_id
     from portal.globals import booths
 
@@ -598,6 +605,7 @@ async def _create_missing_languages_and_booths(
     existing_langs: dict[str, RoomTranslationLanguage],
     token: OAuthToken,
 ) -> None:
+    """Create missing translation languages and booths inside savepoints."""
     from sqlalchemy.exc import IntegrityError
 
     # Create Missing Booths & Languages
@@ -637,6 +645,7 @@ async def _sync_target_languages_and_booths(
     requested_langs: set[str],
     token: OAuthToken,
 ) -> None:
+    """Reconcile requested target languages with the room's persisted booths and translation languages."""
     lang_res = await db.execute(select(RoomTranslationLanguage).where(RoomTranslationLanguage.room_id == room.id))
     existing_langs = {rl.language_code: rl for rl in lang_res.scalars().all()}
 
@@ -652,6 +661,7 @@ async def _sync_target_languages_and_booths(
 
 
 async def _build_booths_response(db: AsyncSession, event_slug: str, room_id: int) -> list[dict[str, str]]:
+    """Build the canonical booth response list with WHEP and WHIP URLs."""
     from portal.booth_identity import make_mediamtx_path
     from portal.config import settings
 
