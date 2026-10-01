@@ -304,6 +304,11 @@ class TestRateLimitResponsesAndHeaders:
             assert "text/html" in resp.headers["content-type"]
             assert b"Too Many Attempts" in resp.content
             assert "retry-after" in resp.headers
+            assert int(resp.headers["retry-after"]) > 0
+            assert resp.headers.get("x-ratelimit-limit") == "1"
+            assert resp.headers.get("x-ratelimit-remaining") == "0"
+            assert "x-ratelimit-reset" in resp.headers
+            assert float(resp.headers["x-ratelimit-reset"]) > 0
 
     @pytest.mark.anyio
     async def test_api_request_returns_json_429(self):
@@ -324,9 +329,52 @@ class TestRateLimitResponsesAndHeaders:
             assert "detail" in data
             assert "Too many requests" in data["detail"]
             assert "retry-after" in resp.headers
+            assert int(resp.headers["retry-after"]) > 0
+            assert resp.headers.get("x-ratelimit-limit") == "1"
+            assert resp.headers.get("x-ratelimit-remaining") == "0"
+            assert "x-ratelimit-reset" in resp.headers
+            assert float(resp.headers["x-ratelimit-reset"]) > 0
+
+    @pytest.mark.anyio
+    async def test_all_auth_endpoints_expose_ratelimit_headers_on_429(self):
+        settings.rate_limit_register = "1/minute"
+        settings.rate_limit_admin_login = "1/minute"
+        limiter.reset()
+
+        # Test POST /register headers
+        async with _client(client_ip="10.8.8.3") as client:
+            await client.post("/register", data={"email": "u@b.com", "display_name": "U", "password": "pw"})
+            resp_reg = await client.post(
+                "/register",
+                data={"email": "u@b.com", "display_name": "U", "password": "pw"},
+                headers={"accept": "application/json"},
+            )
+            assert resp_reg.status_code == 429
+            assert int(resp_reg.headers["retry-after"]) > 0
+            assert resp_reg.headers.get("x-ratelimit-limit") == "1"
+            assert resp_reg.headers.get("x-ratelimit-remaining") == "0"
+            assert float(resp_reg.headers["x-ratelimit-reset"]) > 0
+
+        # Test POST /admin/login headers
+        async with _client(client_ip="10.8.8.4") as client:
+            await client.post("/admin/login", data={"password": "wrong"})
+            resp_admin = await client.post(
+                "/admin/login",
+                data={"password": "wrong"},
+                headers={"accept": "application/json"},
+            )
+            assert resp_admin.status_code == 429
+            assert int(resp_admin.headers["retry-after"]) > 0
+            assert resp_admin.headers.get("x-ratelimit-limit") == "1"
+            assert resp_admin.headers.get("x-ratelimit-remaining") == "0"
+            assert float(resp_admin.headers["x-ratelimit-reset"]) > 0
 
     @pytest.mark.anyio
     async def test_spoofed_forwarded_headers_are_ignored(self):
+        """Verify that untrusted client-supplied X-Forwarded-For headers cannot bypass
+
+        rate limits because SlowAPI's get_remote_address resolves request.client.host.
+        """
         settings.rate_limit_login = "2/minute"
         limiter.reset()
 
@@ -348,12 +396,58 @@ class TestRateLimitResponsesAndHeaders:
             assert resp.status_code == 429
 
     @pytest.mark.anyio
+    async def test_trusted_proxy_client_ip_separation(self):
+        """Verify rate limits apply independently once the trusted proxy / ASGI layer
+
+        has resolved distinct client IPs into request.client.host.
+        """
+        settings.rate_limit_login = "1/minute"
+        limiter.reset()
+
+        proxy_client1 = "203.0.113.10"
+        proxy_client2 = "203.0.113.20"
+
+        async with _client(client_ip=proxy_client1) as c1, _client(client_ip=proxy_client2) as c2:
+            # First client exhausts limit
+            await c1.post("/login", data={"email": "a@b.com", "password": "pw"})
+            blocked_c1 = await c1.post("/login", data={"email": "a@b.com", "password": "pw"})
+            assert blocked_c1.status_code == 429
+
+            # Second client behind the proxy is not blocked
+            resp_c2 = await c2.post("/login", data={"email": "a@b.com", "password": "pw"})
+            assert resp_c2.status_code != 429
+
+    @pytest.mark.anyio
     async def test_rate_limiting_can_be_disabled_via_settings(self):
         settings.rate_limit_login = "1/minute"
+        settings.rate_limit_register = "1/minute"
+        settings.rate_limit_admin_login = "1/minute"
         settings.rate_limit_enabled = False
         limiter.reset()
 
         async with _client(client_ip="172.16.0.10") as client:
-            for _ in range(5):
-                resp = await client.post("/login", data={"email": "a@b.com", "password": "pw"})
+            # Multiple requests to /login succeed without 429
+            for i in range(5):
+                resp = await client.post("/login", data={"email": f"disabled_{i}@example.com", "password": "pw"})
                 assert resp.status_code != 429
+
+            # Multiple requests to /register succeed without 429
+            for i in range(5):
+                resp = await client.post(
+                    "/register", data={"email": f"reg_{i}@example.com", "display_name": "U", "password": "pw"}
+                )
+                assert resp.status_code != 429
+
+            # Multiple requests to /admin/login succeed without 429
+            for _ in range(5):
+                resp = await client.post("/admin/login", data={"password": "wrong"})
+                assert resp.status_code != 429
+
+        # Re-enabling enforces rate limiting again
+        settings.rate_limit_enabled = True
+        limiter.reset()
+
+        async with _client(client_ip="172.16.0.10") as client:
+            await client.post("/login", data={"email": "new_attempt@example.com", "password": "pw"})
+            resp_blocked = await client.post("/login", data={"email": "new_attempt2@example.com", "password": "pw"})
+            assert resp_blocked.status_code == 429
