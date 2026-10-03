@@ -702,7 +702,6 @@ async def upsert_room(
         requested_langs = set(payload_dict["target_languages"])
         await _sync_target_languages_and_booths(db, event, room, eventyay_room_id, requested_langs, token)
 
-
     # Audit Logging
     audit = OAuthAuditLog(
         token_id=token.id,
