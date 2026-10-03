@@ -298,17 +298,6 @@ def _sync_floor_translation_settings(room: Room, payload_dict: dict) -> None:
         room.floor_translation_model = payload_dict["translation_model"]
 
 
-@router.put("/events/{event_slug}/rooms/{eventyay_room_id}")
-async def upsert_room(
-    event_slug: str,
-    eventyay_room_id: str,
-    payload: RoomUpsert,
-    db: AsyncSession = Depends(get_db_session),
-    token: OAuthToken = Depends(require_oauth_scope("rooms:write")),
-):
-    from portal.booth_identity import make_mediamtx_path
-    from portal.globals import booths
-
 def _apply_room_settings(room: Room, payload_dict: dict) -> None:
     """Apply display name, floor transcription, and floor translation settings to the room."""
     if "name" in payload_dict and payload_dict["name"] is not None:
@@ -405,35 +394,6 @@ async def _delete_removed_languages_and_booths(
         if code not in requested_langs:
             await db.delete(rl)
 
-        _apply_floor_settings(room, payload_dict)
-        action = "room.updated"
-        status_code_ret = status.HTTP_200_OK
-    else:
-        # Require name for creation
-        if "name" not in payload_dict or not payload_dict["name"]:
-            raise HTTPException(status_code=400, detail="name is required to create a new room")
-
-        from sqlalchemy.exc import IntegrityError
-
-        try:
-            async with db.begin_nested():
-                room = Room(event_id=event.id, eventyay_room_id=eventyay_room_id, display_name=payload_dict["name"])
-                _apply_floor_settings(room, payload_dict)
-                db.add(room)
-                await db.flush()
-        except IntegrityError:
-            room_res = await db.execute(
-                select(Room).where(Room.event_id == event.id, Room.eventyay_room_id == eventyay_room_id)
-            )
-            room = room_res.scalars().first()
-            if not room:
-                raise HTTPException(status_code=500, detail="Failed to upsert room")
-            _apply_floor_settings(room, payload_dict)
-            action = "room.updated"
-            status_code_ret = status.HTTP_200_OK
-        else:
-            action = "room.created"
-            status_code_ret = status.HTTP_201_CREATED
 
 async def _create_missing_languages_and_booths(
     db: AsyncSession,
@@ -543,39 +503,6 @@ async def upsert_room(
     if "target_languages" in payload_dict and payload_dict["target_languages"] is not None:
         requested_langs = set(payload_dict["target_languages"])
         await _sync_target_languages_and_booths(db, event, room, eventyay_room_id, requested_langs, token)
-        for code, rl in existing_langs.items():
-            if code not in requested_langs:
-                await db.delete(rl)
-
-        # Create Missing Booths & Languages
-        from sqlalchemy.exc import IntegrityError
-
-        for code in requested_langs:
-            if code not in existing_langs:
-                try:
-                    async with db.begin_nested():
-                        db.add(RoomTranslationLanguage(room_id=room.id, language_code=code, language_name=code))
-                        await db.flush()
-                except IntegrityError:
-                    pass
-
-            if code not in existing_booths:
-                try:
-                    async with db.begin_nested():
-                        new_booth = DBBooth(room_id=room.id, language_code=code, event_id=event.id, language_name=code)
-                        db.add(new_booth)
-                        db.add(
-                            OAuthAuditLog(
-                                token_id=token.id,
-                                client_id=token.client_id,
-                                action="booth.created",
-                                request_path=f"/api/v1/events/{event_slug}/rooms/{eventyay_room_id}/booths/{code}",
-                                status_code=status.HTTP_201_CREATED,
-                            )
-                        )
-                        await db.flush()
-                except IntegrityError:
-                    pass
 
     # Audit Logging
     audit = OAuthAuditLog(

@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("BOOTH_ACCESS_TOKEN", "")
@@ -390,50 +391,116 @@ async def test_active_session_deletion_guard():
 
 
 @pytest.mark.anyio
-async def test_integrity_error_concurrent_creation_retry_path():
-    """Verify _create_or_update_base_room recovers when an IntegrityError occurs on room insert."""
-    from sqlalchemy.ext.asyncio import AsyncSession
+async def test_integrity_error_concurrent_creation_retry_path(tmp_path: Path):
+    """Verify _create_or_update_base_room recovers from a real SQLite UNIQUE constraint violation.
 
-    from portal.database import create_room, get_session
-    from portal.models import Room
+    Uses a temporary file-backed SQLite database so independent connections/sessions
+    model a true concurrent race where a competing session inserts and commits first,
+    causing the endpoint's real flush to hit SQLite's UNIQUE constraint.
+    """
+    from sqlalchemy import event as sa_event
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
 
-    event = await _seed()
+    from fastapi_app import app
+    from portal.auth import hash_password
+    from portal.database import create_event, create_user, get_db_session, set_event_membership
+    from portal.models import Base, DeveloperAccount, OAuthClient, OAuthToken, Room
+
+    # 1. Isolated temporary file-backed SQLite database
+    db_file = tmp_path / "test_concurrent_rooms.db"
+    db_url = f"sqlite+aiosqlite:///{db_file.as_posix()}"
+    file_engine = create_async_engine(db_url, poolclass=NullPool)
+
+    @sa_event.listens_for(file_engine.sync_engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
+
+    async with file_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    file_session_factory = async_sessionmaker(file_engine, expire_on_commit=False)
+
+    # 2. Seed event and OAuth credentials into the file-backed database
+    async with file_session_factory() as s:
+        async with s.begin():
+            user = await create_user(
+                s,
+                email="owner@example.com",
+                display_name="Owner",
+                password_hash=hash_password("password123"),
+            )
+            event = await create_event(s, slug="synccon", display_name="SyncCon 2026")
+            await set_event_membership(s, user_id=user.id, event_id=event.id, role="event_owner")
+
+            dev_account = DeveloperAccount(user_id=user.id, status="approved")
+            s.add(dev_account)
+            await s.flush()
+            client = OAuthClient(developer_account_id=dev_account.id, client_id="sync-client", name="Sync")
+            s.add(client)
+            await s.flush()
+            s.add(
+                OAuthToken(
+                    client_id=client.id,
+                    user_id=user.id,
+                    event_id=event.id,
+                    scopes=["rooms:write"],
+                    access_token_hash=hashlib.sha256(ACCESS_TOKEN.encode()).hexdigest(),
+                    expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+                )
+            )
+
+    # 3. Inject file-backed session into the endpoint
+    async def _override_get_db_session():
+        async with file_session_factory() as session:
+            async with session.begin():
+                yield session
+
+    app.dependency_overrides[get_db_session] = _override_get_db_session
 
     original_flush = AsyncSession.flush
 
-    async def _concurrent_insert_flush(session_self, *args, **kwargs):
-        if getattr(session_self, "_tested_collision", False):
-            return await original_flush(session_self, *args, **kwargs)
-        session_self._tested_collision = True
-        async with get_session() as other_session:
-            other_session._tested_collision = True
-            await create_room(
-                other_session,
-                event_id=event.id,
-                display_name="Concurrent Winner",
-                eventyay_room_id="room-concurrent-1",
-            )
-        raise IntegrityError(
-            "mock statement", "mock params", "UNIQUE constraint failed: rooms.event_id, rooms.eventyay_room_id"
-        )
+    # 4. Competing session commits before the endpoint's flush reaches SQLite
+    async def _concurrent_insert_and_real_flush(session_self, *args, **kwargs):
+        if not getattr(session_self, "_tested_collision", False):
+            session_self._tested_collision = True
+            async with file_session_factory() as competing_session:
+                async with competing_session.begin():
+                    competing_session.add(
+                        Room(
+                            event_id=event.id,
+                            display_name="Concurrent Winner",
+                            eventyay_room_id="room-concurrent-1",
+                        )
+                    )
+        # Call the REAL flush so SQLite enforces UNIQUE(event_id, eventyay_room_id)
+        return await original_flush(session_self, *args, **kwargs)
 
-    # Patch AsyncSession.flush to trigger IntegrityError during the create branch
-    with patch("sqlalchemy.ext.asyncio.AsyncSession.flush", new=_concurrent_insert_flush):
-        async with _client() as c:
-            resp = await c.put(
-                f"/api/v1/events/{event.slug}/rooms/room-concurrent-1",
-                json={"name": "Updated After Collision", "enable_transcription": True},
-                headers=_auth(),
-            )
+    try:
+        with patch("sqlalchemy.ext.asyncio.AsyncSession.flush", new=_concurrent_insert_and_real_flush):
+            async with _client() as c:
+                resp = await c.put(
+                    f"/api/v1/events/{event.slug}/rooms/room-concurrent-1",
+                    json={"name": "Updated After Collision", "enable_transcription": True},
+                    headers=_auth(),
+                )
 
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "success"
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
 
-    async with get_session() as s:
-        room = await s.get(Room, data["room_id"])
-        assert room.display_name == "Updated After Collision"
-        assert room.floor_transcription_enabled is True
+        # 5. Verify the existing recovery branch re-queried and updated the room
+        async with file_session_factory() as s:
+            room = await s.get(Room, data["room_id"])
+            assert room is not None
+            assert room.display_name == "Updated After Collision"
+            assert room.floor_transcription_enabled is True
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+        await file_engine.dispose()
 
 
 @pytest.mark.anyio
