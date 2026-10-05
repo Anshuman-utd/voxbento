@@ -19,6 +19,11 @@ templates = Jinja2Templates(directory=str(_BASE_DIR / "templates"))
 class AppLimiter(Limiter):
     """SlowAPI Limiter that reflects dynamic settings.rate_limit_enabled."""
 
+    def __init__(self, *args, **kwargs) -> None:
+        if "enabled" not in kwargs:
+            kwargs["enabled"] = settings.rate_limit_enabled
+        super().__init__(*args, **kwargs)
+
     @property
     def enabled(self) -> bool:
         return settings.rate_limit_enabled

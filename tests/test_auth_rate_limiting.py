@@ -451,3 +451,35 @@ class TestRateLimitResponsesAndHeaders:
             await client.post("/login", data={"email": "new_attempt@example.com", "password": "pw"})
             resp_blocked = await client.post("/login", data={"email": "new_attempt2@example.com", "password": "pw"})
             assert resp_blocked.status_code == 429
+
+    @pytest.mark.anyio
+    async def test_app_limiter_init_preserves_rate_limit_enabled_false(self):
+        """Ensure AppLimiter instantiation does not overwrite settings.rate_limit_enabled=False."""
+        from slowapi.util import get_remote_address
+
+        from portal.limiter import AppLimiter
+
+        settings.rate_limit_enabled = False
+        test_lim = AppLimiter(key_func=get_remote_address, default_limits=[])
+        assert settings.rate_limit_enabled is False
+        assert test_lim.enabled is False
+
+        # Verify dynamic property setter
+        test_lim.enabled = True
+        assert settings.rate_limit_enabled is True
+        assert test_lim.enabled is True
+
+    @pytest.mark.anyio
+    async def test_login_no_hidden_legacy_rate_limit(self):
+        """Ensure /login relies solely on configurable SlowAPI without the legacy fixed 10/hour limit."""
+        settings.rate_limit_login = "20/minute"
+        limiter.reset()
+
+        # 12 requests with same email but under SlowAPI limit (20/min) should not trigger 429
+        async with _client(client_ip="10.8.8.99") as client:
+            for _ in range(12):
+                resp = await client.post(
+                    "/login",
+                    data={"email": "same_user@example.com", "password": "wrongpassword"},
+                )
+                assert resp.status_code == 403

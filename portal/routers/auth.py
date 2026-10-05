@@ -212,14 +212,6 @@ async def user_login_submit(request: Request):
     password = form.get("password", "")
     next_url = form.get("next_url", "")
 
-    if not check_rate_limit("login", email, max_requests=10, window_seconds=3600):
-        return templates.TemplateResponse(
-            request=request,
-            name="login.html",
-            context={"error": "Too many attempts. Try again later.", "email": email, "next_url": next_url},
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-        )
-
     async with get_session() as session:
         user = await get_user_by_email(session, email)
 
