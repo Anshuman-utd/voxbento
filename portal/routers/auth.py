@@ -34,7 +34,7 @@ from portal.database import (
 from portal.email import send_magic_login_email, send_password_reset_email, send_verification_email
 from portal.email_sender import send_delayed_onboarding_email
 from portal.globals import _JS_CACHE_BUST
-from portal.limiter import limiter
+from portal.limiter import check_rate_limit_account, limiter
 from portal.rate_limit import check_rate_limit
 from portal.schemas.auth import TokenRequest, TokenResponse
 from portal.utils import safe_redirect
@@ -211,6 +211,10 @@ async def user_login_submit(request: Request):
     email = form.get("email", "").strip().lower()
     password = form.get("password", "")
     next_url = form.get("next_url", "")
+
+    rate_limit_resp = check_rate_limit_account(request, email, action="login")
+    if rate_limit_resp is not None:
+        return rate_limit_resp
 
     async with get_session() as session:
         user = await get_user_by_email(session, email)

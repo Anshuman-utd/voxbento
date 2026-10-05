@@ -94,11 +94,19 @@ uv pip install -e .[nvidia]
 ```
 
 ### Authentication Rate Limiting
-Authentication routes (`POST /register`, `POST /login`, `POST /admin/login`) are protected with IP-based rate limiting via SlowAPI:
+Authentication routes (`POST /register`, `POST /login`, `POST /admin/login`) are protected with rate limiting via SlowAPI:
 - `RATE_LIMIT_ENABLED`: Master toggle for rate limiting (`true` by default; set to `false` for testing or automated benchmarking).
 - `RATE_LIMIT_REGISTER`: Limit for registration attempts per IP (default: `5/minute`).
 - `RATE_LIMIT_LOGIN`: Limit for user login attempts per IP (default: `10/minute`).
+- `RATE_LIMIT_LOGIN_ACCOUNT`: Limit for user login attempts per account/email (default: `5/minute`). Account identifiers are normalized (trimmed, lowercased) and hashed with HMAC-SHA256 using the application secret key so raw email addresses are never stored in rate-limit keys or exposed in memory dumps.
 - `RATE_LIMIT_ADMIN_LOGIN`: Limit for admin login attempts per IP (default: `5/minute`).
+
+#### Process-Local Storage and Deployment Notice
+The default rate limiter uses an in-process memory backend (`MemoryStorage`). Consequently:
+- Rate limits are **process-local**; counters are stored in memory within each running process.
+- Multiple Uvicorn worker processes (`--workers > 1`) or multiple container replicas/instances do **not** share counters.
+- Under a multi-worker or multi-replica setup, the effective request limit across the fleet is higher than configured (multiplied by the number of active worker processes).
+- Production deployments requiring strict global rate enforcement should configure an external shared backend (such as Redis) or operate with a single worker per instance behind an upstream rate-limiting reverse proxy until shared storage is supported.
 
 When deployed behind a reverse proxy (such as Caddy or Nginx):
 - The bundled `Caddyfile` sets `header_up X-Forwarded-For {remote_host}` to forward the client IP.

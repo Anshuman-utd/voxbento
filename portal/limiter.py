@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import math
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.templating import Jinja2Templates
+from limits import parse as parse_limit
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -40,23 +45,60 @@ limiter = AppLimiter(
 )
 
 
-def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
-    """Exception handler for slowapi RateLimitExceeded.
+def normalize_account_identifier(identifier: str) -> str:
+    """Normalize account identifier (email/username) consistently.
 
-    Computes standard rate limit headers (Retry-After, X-RateLimit-*) and returns
-    either an HTML 429 page (if client accepts text/html) or a JSON 429 response.
+    Strips leading and trailing whitespace and converts to lowercase.
     """
-    view_limit = getattr(request.state, "view_rate_limit", None)
+    return identifier.strip().lower()
+
+
+def hash_account_key(identifier: str, action: str = "login") -> str:
+    """Derive a privacy-safe deterministic rate-limit key for an account identifier.
+
+    Uses HMAC-SHA256 with effective_jwt_secret so raw emails are not stored
+    in memory or exposed in telemetry/rate-limit keys.
+    """
+    norm = normalize_account_identifier(identifier)
+    secret = settings.effective_jwt_secret.encode("utf-8")
+    h = hmac.new(secret, f"{action}:{norm}".encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"account:{action}:{h}"
+
+
+def build_rate_limit_response(
+    request: Request,
+    view_limit: tuple[Any, list[str]] | None = None,
+) -> Response:
+    """Construct a 429 Response with standard headers and format (HTML or JSON).
+
+    Computes standard rate limit headers (Retry-After, X-RateLimit-*) based on the
+    actual limits library contract:
+    - window_stats[0] (or reset_time): absolute Unix timestamp (in seconds since epoch)
+      when the current window resets.
+    - window_stats[1] (or remaining): remaining allowed requests in this window.
+
+    Headers:
+    - X-RateLimit-Limit: configured request limit amount
+    - X-RateLimit-Remaining: remaining requests in current window
+    - X-RateLimit-Reset: deterministic absolute Unix timestamp (integer seconds)
+    - Retry-After: non-negative integer seconds until window reset
+    """
+
     headers: dict[str, str] = {}
-    if view_limit and hasattr(request.app.state, "limiter"):
+    limiter_obj = getattr(getattr(request, "app", None), "state", None)
+    app_limiter = getattr(limiter_obj, "limiter", limiter)
+
+    if view_limit and hasattr(app_limiter, "limiter"):
         try:
-            window_stats = request.app.state.limiter.limiter.get_window_stats(view_limit[0], *view_limit[1])
-            reset_in = 1 + window_stats[0]
-            retry_after = max(1, int(reset_in - time.time()))
+            window_stats = app_limiter.limiter.get_window_stats(view_limit[0], *view_limit[1])
+            reset_time = float(window_stats[0])
+            now = time.time()
+            reset_at = int(math.ceil(reset_time))
+            retry_after = max(1, int(math.ceil(reset_time - now)))
             headers["Retry-After"] = str(retry_after)
             headers["X-RateLimit-Limit"] = str(view_limit[0].amount)
-            headers["X-RateLimit-Remaining"] = "0"
-            headers["X-RateLimit-Reset"] = str(reset_in)
+            headers["X-RateLimit-Remaining"] = str(max(0, int(window_stats[1])))
+            headers["X-RateLimit-Reset"] = str(reset_at)
         except Exception:
             pass
 
@@ -76,3 +118,39 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
         status_code=429,
         headers=headers,
     )
+
+
+def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded | None = None) -> Response:
+    """Exception handler for slowapi RateLimitExceeded."""
+    view_limit = getattr(request.state, "view_rate_limit", None)
+    return build_rate_limit_response(request, view_limit)
+
+
+def check_rate_limit_account(
+    request: Request,
+    identifier: str,
+    action: str = "login",
+    limit_str: str | None = None,
+) -> Response | None:
+    """Check account-level rate limit for sensitive actions like /login.
+
+    Returns a 429 Response if rate limit is exceeded, or None if allowed.
+    """
+    if not settings.rate_limit_enabled or not limiter.enabled:
+        return None
+
+    norm = normalize_account_identifier(identifier)
+    if not norm:
+        return None
+
+    if limit_str is None:
+        limit_str = settings.rate_limit_login_account
+
+    item = parse_limit(limit_str)
+    account_key = hash_account_key(norm, action=action)
+
+    if not limiter.limiter.hit(item, account_key):
+        request.state.view_rate_limit = (item, [account_key])
+        return build_rate_limit_response(request, (item, [account_key]))
+
+    return None

@@ -48,6 +48,7 @@ def reset_limiter_state():
     orig_enabled = settings.rate_limit_enabled
     orig_register = settings.rate_limit_register
     orig_login = settings.rate_limit_login
+    orig_login_account = settings.rate_limit_login_account
     orig_admin_login = settings.rate_limit_admin_login
 
     settings.rate_limit_enabled = True
@@ -58,6 +59,7 @@ def reset_limiter_state():
     settings.rate_limit_enabled = orig_enabled
     settings.rate_limit_register = orig_register
     settings.rate_limit_login = orig_login
+    settings.rate_limit_login_account = orig_login_account
     settings.rate_limit_admin_login = orig_admin_login
     limiter.reset()
 
@@ -470,12 +472,84 @@ class TestRateLimitResponsesAndHeaders:
         assert test_lim.enabled is True
 
     @pytest.mark.anyio
+    async def test_deterministic_rate_limit_headers(self, monkeypatch):
+        """Verify deterministic calculation of X-RateLimit-Reset, Retry-After, and remaining.
+
+        Contract:
+        - window_stats[0] is the absolute Unix timestamp (reset_time) when the window resets.
+        - X-RateLimit-Reset must equal the deterministic integer timestamp: ceil(reset_time).
+        - Retry-After must equal ceil(reset_time - current_time).
+        - X-RateLimit-Remaining must be 0 when rate limited.
+        - X-RateLimit-Limit must match the configured limit amount.
+
+        Regression check:
+        The previous buggy arithmetic did:
+            reset_in = 1 + window_stats[0]
+            retry_after = max(1, int(reset_in - time.time()))
+        which incorrectly set X-RateLimit-Reset to (1 + reset_time) and Retry-After to (1 + delta),
+        adding an unwarranted 1-second delay (e.g. 1700000061 instead of 1700000060, and 61 instead of 60).
+        """
+        import time
+
+        from fastapi import Request
+        from limits import parse as parse_limit
+
+        from portal.limiter import build_rate_limit_response
+
+        fixed_now = 1700000000.0
+        known_reset = 1700000060.0  # exactly 60 seconds after fixed_now
+        monkeypatch.setattr(time, "time", lambda: fixed_now)
+
+        item = parse_limit("10/minute")
+        key = "test-header-key"
+
+        class MockLimiterBackend:
+            def get_window_stats(self, *args, **kwargs):
+                return (known_reset, 0)
+
+        class MockAppLimiter:
+            limiter = MockLimiterBackend()
+
+        class MockState:
+            limiter = MockAppLimiter()
+
+        class MockApp:
+            state = MockState()
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/login",
+            "headers": [(b"accept", b"application/json")],
+            "app": MockApp(),
+        }
+        req = Request(scope)
+
+        resp = build_rate_limit_response(req, view_limit=(item, [key]))
+
+        assert resp.status_code == 429
+        # Deterministic exact assertions
+        assert resp.headers["x-ratelimit-reset"] == "1700000060"
+        assert resp.headers["retry-after"] == "60"
+        assert resp.headers["x-ratelimit-remaining"] == "0"
+        assert resp.headers["x-ratelimit-limit"] == "10"
+
+        # Sub-second fractional ceiling test:
+        # At 1700000000.2, remaining time until 1700000060.0 is 59.8s.
+        # math.ceil ensures Retry-After is 60 (safe for client retry), not truncated to 59.
+        monkeypatch.setattr(time, "time", lambda: 1700000000.2)
+        resp_fractional = build_rate_limit_response(req, view_limit=(item, [key]))
+        assert resp_fractional.headers["x-ratelimit-reset"] == "1700000060"
+        assert resp_fractional.headers["retry-after"] == "60"
+
+    @pytest.mark.anyio
     async def test_login_no_hidden_legacy_rate_limit(self):
-        """Ensure /login relies solely on configurable SlowAPI without the legacy fixed 10/hour limit."""
+        """Ensure /login relies on configurable SlowAPI and account limits without a hardcoded 10/hour limit."""
         settings.rate_limit_login = "20/minute"
+        settings.rate_limit_login_account = "20/minute"
         limiter.reset()
 
-        # 12 requests with same email but under SlowAPI limit (20/min) should not trigger 429
+        # 12 requests with same email under configured limits (20/min) should not trigger 429
         async with _client(client_ip="10.8.8.99") as client:
             for _ in range(12):
                 resp = await client.post(
@@ -483,3 +557,205 @@ class TestRateLimitResponsesAndHeaders:
                     data={"email": "same_user@example.com", "password": "wrongpassword"},
                 )
                 assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Combined IP + Account Rate Limiting Policy (Issue 1)
+# ---------------------------------------------------------------------------
+
+
+class TestCombinedLoginRateLimiting:
+    @pytest.mark.anyio
+    async def test_login_repeated_attempts_same_ip_and_account(self):
+        """Repeated login failures for the same account from the same IP trigger account rate limit."""
+        settings.rate_limit_login = "10/minute"
+        settings.rate_limit_login_account = "3/minute"
+        limiter.reset()
+
+        async with _client(client_ip="192.168.10.1") as client:
+            for _ in range(3):
+                resp = await client.post(
+                    "/login",
+                    data={"email": "victim@example.com", "password": "badpassword"},
+                )
+                assert resp.status_code == 403
+
+            # 4th attempt exceeds the 3/minute account limit
+            resp_blocked = await client.post(
+                "/login",
+                data={"email": "victim@example.com", "password": "badpassword"},
+            )
+            assert resp_blocked.status_code == 429
+            assert resp_blocked.headers.get("x-ratelimit-limit") == "3"
+            assert resp_blocked.headers.get("x-ratelimit-remaining") == "0"
+            assert int(resp_blocked.headers["retry-after"]) > 0
+            assert int(resp_blocked.headers["x-ratelimit-reset"]) > 0
+
+    @pytest.mark.anyio
+    async def test_login_distributed_ips_against_same_account(self):
+        """Account rate limit protects against distributed brute force across multiple IP addresses."""
+        settings.rate_limit_login = "10/minute"
+        settings.rate_limit_login_account = "3/minute"
+        limiter.reset()
+
+        # Attacker distributes 3 attempts from IP 1
+        async with _client(client_ip="192.168.20.1") as c1:
+            for _ in range(3):
+                resp = await c1.post(
+                    "/login",
+                    data={"email": "targeted_user@example.com", "password": "wrong"},
+                )
+                assert resp.status_code == 403
+
+        # Attacker rotates to a fresh IP 2; the account limit is still exceeded!
+        async with _client(client_ip="192.168.20.2") as c2:
+            resp_blocked = await c2.post(
+                "/login",
+                data={"email": "targeted_user@example.com", "password": "wrong"},
+            )
+            assert resp_blocked.status_code == 429
+            assert resp_blocked.headers.get("x-ratelimit-limit") == "3"
+
+    @pytest.mark.anyio
+    async def test_login_multiple_accounts_behind_same_ip(self):
+        """IP rate limit prevents flooding/resource exhaustion when an attacker attempts many accounts from one IP."""
+        settings.rate_limit_login = "3/minute"
+        settings.rate_limit_login_account = "5/minute"
+        limiter.reset()
+
+        async with _client(client_ip="192.168.30.1") as client:
+            # 3 attempts across 3 different accounts consume the IP bucket
+            for i in range(3):
+                resp = await client.post(
+                    "/login",
+                    data={"email": f"user_{i}@example.com", "password": "wrong"},
+                )
+                assert resp.status_code == 403
+
+            # 4th attempt with a brand-new account is blocked by the IP limit
+            resp_blocked = await client.post(
+                "/login",
+                data={"email": "brand_new_user@example.com", "password": "wrong"},
+            )
+            assert resp_blocked.status_code == 429
+            assert resp_blocked.headers.get("x-ratelimit-limit") == "3"
+
+    @pytest.mark.anyio
+    async def test_login_account_identifier_normalization(self):
+        """Account identifiers are normalized (trimmed, lowercased) and hashed with HMAC for privacy."""
+        from portal.limiter import hash_account_key, normalize_account_identifier
+
+        settings.rate_limit_login = "10/minute"
+        settings.rate_limit_login_account = "2/minute"
+        limiter.reset()
+
+        # Verify normalization utility
+        assert normalize_account_identifier("  User.Test@Example.COM  ") == "user.test@example.com"
+        assert hash_account_key("  User.Test@Example.COM  ") == hash_account_key("user.test@example.com")
+        # Ensure raw email is not stored in key
+        assert "user.test@example.com" not in hash_account_key("user.test@example.com")
+
+        async with _client(client_ip="192.168.40.1") as client:
+            resp1 = await client.post(
+                "/login",
+                data={"email": "user.test@example.com", "password": "wrong"},
+            )
+            assert resp1.status_code == 403
+
+            resp2 = await client.post(
+                "/login",
+                data={"email": "  USER.TEST@EXAMPLE.COM  ", "password": "wrong"},
+            )
+            assert resp2.status_code == 403
+
+            # 3rd attempt with mixed case/whitespace hits the 2/minute account limit
+            resp3 = await client.post(
+                "/login",
+                data={"email": "User.Test@Example.Com", "password": "wrong"},
+            )
+            assert resp3.status_code == 429
+
+    @pytest.mark.anyio
+    async def test_login_rate_limiting_disabled_bypasses_both_ip_and_account(self):
+        """When RATE_LIMIT_ENABLED=false, both IP and account limits are disabled."""
+        settings.rate_limit_login = "2/minute"
+        settings.rate_limit_login_account = "2/minute"
+        settings.rate_limit_enabled = False
+        limiter.reset()
+
+        async with _client(client_ip="192.168.50.1") as client:
+            for _ in range(6):
+                resp = await client.post(
+                    "/login",
+                    data={"email": "disabled_test@example.com", "password": "wrong"},
+                )
+                assert resp.status_code == 403
+
+    @pytest.mark.anyio
+    async def test_login_account_rate_limit_response_semantics_html_and_json(self):
+        """Account rate limit produces consistent 429 response semantics matching IP rate limiting."""
+        settings.rate_limit_login = "10/minute"
+        settings.rate_limit_login_account = "1/minute"
+        limiter.reset()
+
+        async with _client(client_ip="192.168.60.1") as client:
+            # 1st attempt consumes account limit
+            await client.post(
+                "/login",
+                data={"email": "semantics@example.com", "password": "wrong"},
+            )
+
+            # HTML client receives 429 HTML page with standard headers
+            resp_html = await client.post(
+                "/login",
+                data={"email": "semantics@example.com", "password": "wrong"},
+                headers={"accept": "text/html,application/xhtml+xml"},
+            )
+            assert resp_html.status_code == 429
+            assert "text/html" in resp_html.headers["content-type"]
+            assert b"Too Many Attempts" in resp_html.content
+            assert resp_html.headers.get("x-ratelimit-limit") == "1"
+            assert resp_html.headers.get("x-ratelimit-remaining") == "0"
+            assert int(resp_html.headers["retry-after"]) > 0
+            assert int(resp_html.headers["x-ratelimit-reset"]) > 0
+
+            # JSON client receives JSON 429 with standard headers
+            resp_json = await client.post(
+                "/login",
+                data={"email": "semantics@example.com", "password": "wrong"},
+                headers={"accept": "application/json"},
+            )
+            assert resp_json.status_code == 429
+            assert "application/json" in resp_json.headers["content-type"]
+            data = resp_json.json()
+            assert "detail" in data
+            assert resp_json.headers.get("x-ratelimit-limit") == "1"
+            assert resp_json.headers.get("x-ratelimit-remaining") == "0"
+            assert int(resp_json.headers["retry-after"]) > 0
+            assert int(resp_json.headers["x-ratelimit-reset"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# In-Process Limiter / Multi-Worker Storage Verification (Issue 3)
+# ---------------------------------------------------------------------------
+
+
+class TestProcessLocalLimiter:
+    @pytest.mark.anyio
+    async def test_limiter_uses_process_local_memory_storage(self):
+        """Verify that SlowAPI uses in-process MemoryStorage by default.
+
+        This documents and verifies that rate-limit counters are process-local:
+        separate worker processes or container replicas do not share state.
+        """
+        from limits.storage import MemoryStorage
+
+        storage = limiter.limiter.storage
+        assert isinstance(storage, MemoryStorage)
+
+        # Demonstrate that independent memory storage instances do not share state
+        isolated_storage = MemoryStorage()
+        test_key = "process_test_key"
+        storage.incr(test_key, 60, 1)
+        assert storage.get(test_key) == 1
+        assert isolated_storage.get(test_key) == 0  # Separate process/instance sees 0
