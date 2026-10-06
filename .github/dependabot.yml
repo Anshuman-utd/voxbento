@@ -50,10 +50,10 @@ updates:
     groups:
       jitsi:
         patterns:
-          - "jitsi/web"
-          - "jitsi/prosody"
-          - "jitsi/jicofo"
-          - "jitsi/jvb"
+          - "ghcr.io/jitsi/web"
+          - "ghcr.io/jitsi/prosody"
+          - "ghcr.io/jitsi/jicofo"
+          - "ghcr.io/jitsi/jvb"
     commit-message:
       prefix: "deps(compose)"
 

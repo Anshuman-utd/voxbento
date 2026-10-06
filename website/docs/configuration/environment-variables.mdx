@@ -44,7 +44,7 @@ These variables tell Voxbento where MediaMTX is running and how attendee browser
 | `JVB_ADVERTISE_IPS` | _(none)_ | Comma-separated IP addresses that Jitsi Videobridge advertises as ICE candidates. For a single-server deployment, set the public or reachable LAN IP. |
 
 :::tip
-To find your public IP on Linux, run `hostname -I | awk '{print $1}'`. On macOS, run `ipconfig getifaddr en0`. Set the result as `JVB_ADVERTISE_IPS` in your `.env` file. Existing deployments that still define the deprecated `DOCKER_HOST_ADDRESS` variable are supported by the Compose compatibility fallback.
+To find your public IP on Linux, run `hostname -I | awk '{print $1}'`. On macOS, run `ipconfig getifaddr en0`. Set the result as `JVB_ADVERTISE_IPS` in your `.env` file.
 :::
 
 ## Database Variables

@@ -23,13 +23,13 @@ docker-compose.yml
 
 volumes:
   portal-data         → SQLite DB persistence
-  jitsi-web-config-v11248
-  jitsi-web-storage-v11248
-  jitsi-prosody-config-v11248
-  jitsi-prosody-plugins-v11248
-  jitsi-prosody-storage-v11248
-  jitsi-jicofo-config-v11248
-  jitsi-jvb-config-v11248
+  jitsi-web-config-rootless
+  jitsi-web-storage-rootless
+  jitsi-prosody-config-rootless
+  jitsi-prosody-plugins-rootless
+  jitsi-prosody-storage-rootless
+  jitsi-jicofo-config-rootless
+  jitsi-jvb-config-rootless
 ```
 
 ---

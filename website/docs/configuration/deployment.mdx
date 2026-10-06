@@ -187,69 +187,13 @@ Jitsi uses ICE (Interactive Connectivity Establishment) to negotiate a media pat
   # Find your public IP on Linux
   hostname -I | awk '{print $1}'
 
-  # Set in .env
-  JVB_ADVERTISE_IPS=203.0.113.10
+  # Persist it for Docker Compose
+  printf '\nJVB_ADVERTISE_IPS=203.0.113.10\n' >> .env
   ```
 
   Without this, Jitsi audio/video may only work for browsers on the same network as the server.
 
 </details>
-
-## Upgrading Jitsi from stable-9823
-
-Voxbento now pins all four Jitsi components to `stable-11248` from GHCR. The
-upgrade crosses Jitsi's `stable-11146` rootless-container migration, so changing
-only the image tags is not sufficient. The updated Compose file also:
-
-- maps host ports `8080` and `8443` to the new unprivileged container ports
-  `8000` and `8443`;
-- runs Jitsi services with read-only filesystems and writable `/run` and `/tmp`
-  tmpfs mounts;
-- uses separate persistent storage for web TLS state and Prosody data;
-- sends the floor bot to `https://jitsi-web:8443`; and
-- removes the retired Colibri WebSocket setting.
-
-Before upgrading, save the current deployment revision and inspect the Jitsi
-volumes so you have a rollback reference:
-
-```bash
-git rev-parse HEAD
-docker compose images
-docker volume ls --filter name=jitsi
-```
-
-Set the new ICE variable. Compose temporarily accepts the previous variable as
-a fallback, but new deployments should use the current name:
-
-```bash
-JVB_ADVERTISE_IPS=203.0.113.10
-```
-
-Pull and recreate only the Jitsi services and floor bot during a maintenance
-window:
-
-```bash
-docker compose pull jitsi-web jitsi-prosody jitsi-jicofo jitsi-jvb
-docker compose up -d --force-recreate \
-  jitsi-prosody jitsi-jicofo jitsi-jvb jitsi-web floor-bot portal
-docker compose ps
-docker compose logs --tail=100 jitsi-prosody jitsi-jicofo jitsi-jvb jitsi-web
-```
-
-The upgraded stack deliberately uses fresh volume names ending in `-v11248`.
-The old `stable-9823` volumes remain untouched on the host. This is appropriate
-for Voxbento's anonymous, ephemeral Jitsi rooms and avoids carrying root-owned
-generated configuration into containers that now run as UID 1000.
-
-After deployment, verify that two browsers can join the same room, audio/video
-flows through JVB over UDP port 10000, the embedded booth iframe loads, and the
-floor bot can join and publish ordinary conference audio to MediaMTX. YouTube's
-Shared Video feature is not an acceptance test because YouTube can independently
-challenge the floor bot's headless browser.
-
-To roll back, restore the recorded Git revision and recreate the same services.
-The previous Compose definition will reconnect `stable-9823` to the untouched
-legacy volumes.
 
 <details>
 <summary>Change all default Jitsi passwords</summary>
