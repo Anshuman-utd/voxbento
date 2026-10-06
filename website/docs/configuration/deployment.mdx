@@ -184,11 +184,8 @@ Jitsi uses ICE (Interactive Connectivity Establishment) to negotiate a media pat
   Set `JVB_ADVERTISE_IPS` to your server's **public** IP address:
 
   ```bash
-  # Find your public IP on Linux
-  hostname -I | awk '{print $1}'
-
-  # Persist it for Docker Compose
-  printf '\nJVB_ADVERTISE_IPS=203.0.113.10\n' >> .env
+  read -r -p "Enter the server's reachable public IP: " jvb_advertise_ip
+  printf '\nJVB_ADVERTISE_IPS=%s\n' "$jvb_advertise_ip" >> .env
   ```
 
   Without this, Jitsi audio/video may only work for browsers on the same network as the server.
