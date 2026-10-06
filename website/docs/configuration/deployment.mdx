@@ -73,10 +73,10 @@ Open `.env` in a text editor and configure at minimum the following four variabl
     # Your server's public IP — required for WebRTC ICE
     # Linux:  hostname -I | awk '{print $1}'
     # macOS:  ipconfig getifaddr en0
-    DOCKER_HOST_ADDRESS=203.0.113.10
+    JVB_ADVERTISE_IPS=203.0.113.10
     ```
 
-    Without `DOCKER_HOST_ADDRESS`, WebRTC ICE candidates will not be reachable from attendee browsers outside the local machine.
+    Without `JVB_ADVERTISE_IPS`, Jitsi media ICE candidates may not be reachable from browsers outside the local machine.
 
   ### Start all services
 
@@ -177,21 +177,21 @@ WebRTC **requires HTTPS** in production browsers — Chrome and Firefox will not
 </details>
 
 <details>
-<summary>Set DOCKER_HOST_ADDRESS for WebRTC</summary>
+<summary>Set JVB_ADVERTISE_IPS for Jitsi WebRTC</summary>
 
-WebRTC uses ICE (Interactive Connectivity Establishment) to negotiate a direct media path between the interpreter's browser and MediaMTX. For ICE to work, MediaMTX must advertise a reachable IP address in its ICE candidates.
+Jitsi uses ICE (Interactive Connectivity Establishment) to negotiate a media path between each participant's browser and Jitsi Videobridge. For this to work outside the local network, JVB must advertise a reachable IP address in its ICE candidates.
 
-  Set `DOCKER_HOST_ADDRESS` to your server's **public** IP address:
+  Set `JVB_ADVERTISE_IPS` to your server's **public** IP address:
 
   ```bash
   # Find your public IP on Linux
   hostname -I | awk '{print $1}'
 
-  # Set in .env
-  DOCKER_HOST_ADDRESS=203.0.113.10
+  # Persist it for Docker Compose
+  printf '\nJVB_ADVERTISE_IPS=203.0.113.10\n' >> .env
   ```
 
-  Without this, WebRTC audio will only work for browsers on the same machine as the server.
+  Without this, Jitsi audio/video may only work for browsers on the same network as the server.
 
 </details>
 
