@@ -66,10 +66,10 @@ echo "ADMIN_PASSWORD=$(openssl rand -hex 16)" >> .env
 # Required for API key encryption: set your encryption key (must be 32 characters or longer)
 echo "API_KEY_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> .env
 
-# Required for Jitsi video: set your machine's LAN IP
+# Required for Jitsi video: set the IP JVB advertises to browsers
 # macOS:  ipconfig getifaddr en0
 # Linux:  hostname -I | awk '{print $1}'
-echo 'DOCKER_HOST_ADDRESS=192.168.1.x' >> .env
+echo 'JVB_ADVERTISE_IPS=192.168.1.x' >> .env
 
 docker compose up --build
 ```
@@ -81,6 +81,20 @@ For detailed API documentation, environment variables, and configuration, visit 
 ---
 
 ## Upgrade Notes
+
+### Jitsi stable-11248
+
+The bundled Jitsi stack uses `stable-11248`. These images run rootless with a
+read-only filesystem and listen on unprivileged container ports. Voxbento keeps
+the existing host ports (`8080` for HTTP and `8443` for HTTPS), so Caddy and
+browser-facing URLs do not change.
+
+The first start creates new `*-v11248` Jitsi volumes instead of modifying the
+legacy `stable-9823` volumes. This gives existing deployments a direct rollback
+path: reverting the Compose change reconnects the old images to their untouched
+volumes. Set `JVB_ADVERTISE_IPS` to the server's reachable IP before starting the
+new stack. Existing `.env` files that still set `DOCKER_HOST_ADDRESS` continue to
+work through a compatibility fallback, but should be migrated.
 
 ### API Key Encryption & Rotation
 A mandatory environment variable `API_KEY_ENCRYPTION_KEY` securely encrypts third-party API keys in the database. 
