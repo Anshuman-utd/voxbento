@@ -168,9 +168,27 @@
                             <span id="primary-btn-label">Download .DMG for macOS</span>
                         </a>
 
-                        <div class="flex items-center justify-between text-[11px] font-mono text-gray-600 px-1">
+                        <div class="flex items-center justify-between text-[11px] font-mono text-gray-600 px-1 mb-3">
                             <span id="detected-os-details">M1 / M2 / M3 / M4 · Metal GPU</span>
                             <a href="#downloads" class="text-brand-600 hover:underline font-bold">Other platforms ↓</a>
+                        </div>
+
+                        <!-- macOS Gatekeeper & Homebrew Callout -->
+                        <div id="macos-first-run-note" class="p-2.5 bg-amber-50 border-2 border-[#0d0f10] rounded-lg text-[11px] font-mono text-amber-950 space-y-1">
+                            <div class="font-bold flex items-center gap-1.5 text-xs text-[#0d0f10]">
+                                <span>💡</span> First time opening on macOS?
+                            </div>
+                            <p class="leading-tight text-[11px] text-gray-700 font-sans">
+                                Right-click <strong>Voxa.app</strong> in Applications and choose <strong>Open</strong> (or click <em>Open Anyway</em> in <strong>System Settings → Privacy & Security</strong>).
+                            </p>
+                            <p class="leading-tight text-[11px] text-gray-700 font-sans">
+                                Alternatively, install via Homebrew:
+                            </p>
+                            <div class="bg-[#0d0f10] text-emerald-400 p-2 rounded text-[10px] select-all flex flex-col gap-1 font-mono">
+                                <code>brew tap ArnavBallinCode/voxa</code>
+                                <code>brew trust ArnavBallinCode/voxa</code>
+                                <code>brew install --cask voxa</code>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -475,6 +493,11 @@
             const btnLabelEl = document.getElementById('primary-btn-label');
             const osDetailsEl = document.getElementById('detected-os-details');
             const primaryBtn = document.getElementById('primary-download-btn');
+            const macNoteEl = document.getElementById('macos-first-run-note');
+
+            if (macNoteEl && !isMac) {
+                macNoteEl.style.display = 'none';
+            }
 
             if (osIconEl) osIconEl.textContent = detected.icon;
             if (osNameEl) osNameEl.textContent = detected.name;
