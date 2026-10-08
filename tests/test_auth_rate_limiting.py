@@ -24,10 +24,12 @@ os.environ["ADMIN_PASSWORD"] = "test-admin-pass"
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import ValidationError
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from fastapi_app import app
 from portal.auth import hash_password
-from portal.config import settings
+from portal.config import Settings, settings
 from portal.limiter import limiter
 
 
@@ -50,6 +52,7 @@ def reset_limiter_state():
     orig_login = settings.rate_limit_login
     orig_login_account = settings.rate_limit_login_account
     orig_admin_login = settings.rate_limit_admin_login
+    orig_forwarded_allow_ips = settings.forwarded_allow_ips
 
     settings.rate_limit_enabled = True
     limiter.reset()
@@ -61,6 +64,7 @@ def reset_limiter_state():
     settings.rate_limit_login = orig_login
     settings.rate_limit_login_account = orig_login_account
     settings.rate_limit_admin_login = orig_admin_login
+    settings.forwarded_allow_ips = orig_forwarded_allow_ips
     limiter.reset()
 
 
@@ -68,6 +72,22 @@ def _client(client_ip: str = "10.0.0.1") -> AsyncClient:
     """Helper to create an AsyncClient with a specific client IP."""
     return AsyncClient(
         transport=ASGITransport(app=app, client=(client_ip, 1234)),
+        base_url="http://test",
+    )
+
+
+def _proxied_client(
+    peer_ip: str = "172.28.0.1",
+    trusted_hosts: str | None = None,
+) -> AsyncClient:
+    """Helper to create an AsyncClient wrapped with Uvicorn's ProxyHeadersMiddleware.
+
+    Matches production Uvicorn startup configuration with forwarded_allow_ips.
+    """
+    hosts = trusted_hosts if trusted_hosts is not None else settings.forwarded_allow_ips
+    middleware = ProxyHeadersMiddleware(app, trusted_hosts=hosts)
+    return AsyncClient(
+        transport=ASGITransport(app=middleware, client=(peer_ip, 54321)),
         base_url="http://test",
     )
 
@@ -759,3 +779,263 @@ class TestProcessLocalLimiter:
         storage.incr(test_key, 60, 1)
         assert storage.get(test_key) == 1
         assert isolated_storage.get(test_key) == 0  # Separate process/instance sees 0
+
+
+# ---------------------------------------------------------------------------
+# Production Proxy Headers Middleware & Client IP Security Coverage
+# ---------------------------------------------------------------------------
+
+
+class TestProxyHeadersMiddlewareAndRateLimiting:
+    @pytest.mark.anyio
+    async def test_trusted_caddy_gateway_propagates_client_ip_to_independent_buckets(self):
+        """Requests from the trusted Docker bridge gateway (172.28.0.1) have X-Forwarded-For
+
+        trusted by Uvicorn's ProxyHeadersMiddleware, populating request.client.host so that
+        distinct clients behind Caddy receive independent rate-limiting buckets.
+        """
+        settings.rate_limit_login = "2/minute"
+        settings.rate_limit_login_account = "10/minute"
+        limiter.reset()
+
+        gateway_ip = "172.28.0.1"
+        client_a_ip = "203.0.113.10"
+        client_b_ip = "203.0.113.20"
+
+        async with _proxied_client(peer_ip=gateway_ip) as client:
+            # Client A sends 2 requests to reach the 2/minute IP limit
+            r1 = await client.post(
+                "/login",
+                data={"email": "client_a1@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": client_a_ip},
+            )
+            assert r1.status_code == 403
+
+            r2 = await client.post(
+                "/login",
+                data={"email": "client_a2@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": client_a_ip},
+            )
+            assert r2.status_code == 403
+
+            # Client A 3rd request exceeds IP rate limit -> 429
+            r3 = await client.post(
+                "/login",
+                data={"email": "client_a3@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": client_a_ip},
+            )
+            assert r3.status_code == 429
+
+            # Client B behind the same Caddy gateway with distinct client IP
+            # must NOT be blocked (has an independent bucket)
+            r_b = await client.post(
+                "/login",
+                data={"email": "client_b@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": client_b_ip},
+            )
+            assert r_b.status_code == 403
+            assert r_b.status_code != 429
+
+    @pytest.mark.anyio
+    async def test_untrusted_direct_internet_client_cannot_spoof_x_forwarded_for(self):
+        """When an external client connects directly to published port 8000 without Caddy,
+
+        its peer IP (e.g. 198.51.100.77) is NOT trusted by FORWARDED_ALLOW_IPS (127.0.0.1,172.28.0.1).
+        ProxyHeadersMiddleware ignores the client's X-Forwarded-For header, request.client.host
+        remains the direct peer IP, and rotating headers cannot evade rate limiting.
+        """
+        settings.rate_limit_login = "2/minute"
+        settings.rate_limit_login_account = "10/minute"
+        limiter.reset()
+
+        direct_attacker_ip = "198.51.100.77"
+
+        async with _proxied_client(peer_ip=direct_attacker_ip) as client:
+            # Attacker sends 1st request with spoofed IP
+            r1 = await client.post(
+                "/login",
+                data={"email": "attacker1@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": "1.1.1.1"},
+            )
+            assert r1.status_code == 403
+
+            # Attacker sends 2nd request with different spoofed IP
+            r2 = await client.post(
+                "/login",
+                data={"email": "attacker2@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": "2.2.2.2"},
+            )
+            assert r2.status_code == 403
+
+            # Attacker sends 3rd request with yet another spoofed IP.
+            # Because 198.51.100.77 is not in FORWARDED_ALLOW_IPS, Uvicorn ignores
+            # X-Forwarded-For; SlowAPI keys all 3 requests to 198.51.100.77 and blocks.
+            r3 = await client.post(
+                "/login",
+                data={"email": "attacker3@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": "3.3.3.3"},
+            )
+            assert r3.status_code == 429
+
+    @pytest.mark.anyio
+    async def test_multi_hop_forwarded_for_resolves_to_real_client(self):
+        """When a trusted proxy forwards an X-Forwarded-For chain containing upstream hops,
+
+        ProxyHeadersMiddleware inspects in reverse order and selects the first untrusted host
+        as the real client IP, ignoring spoofed upstream prefixes.
+        """
+        settings.rate_limit_login = "1/minute"
+        settings.rate_limit_login_account = "10/minute"
+        limiter.reset()
+
+        gateway_ip = "172.28.0.1"
+        real_client_ip = "203.0.113.88"
+        fake_upstream_ip = "198.51.100.1"
+
+        async with _proxied_client(peer_ip=gateway_ip) as client:
+            # 1st request consumes limit for real_client_ip
+            r1 = await client.post(
+                "/login",
+                data={"email": "multihop1@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": f"{fake_upstream_ip}, {real_client_ip}"},
+            )
+            assert r1.status_code == 403
+
+            # 2nd request with same real_client_ip but different spoofed upstream is blocked
+            r2 = await client.post(
+                "/login",
+                data={"email": "multihop2@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": f"10.0.0.99, {real_client_ip}"},
+            )
+            assert r2.status_code == 429
+
+    @pytest.mark.anyio
+    async def test_loopback_proxy_is_trusted_for_host_deployments(self):
+        """Verify that 127.0.0.1 is trusted in FORWARDED_ALLOW_IPS for native host reverse proxies."""
+        settings.rate_limit_login = "1/minute"
+        limiter.reset()
+
+        async with _proxied_client(peer_ip="127.0.0.1") as client:
+            r1 = await client.post(
+                "/login",
+                data={"email": "loopback1@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": "198.51.100.10"},
+            )
+            assert r1.status_code == 403
+
+            # Same client IP through 127.0.0.1 hits limit on 2nd attempt
+            r2 = await client.post(
+                "/login",
+                data={"email": "loopback2@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": "198.51.100.10"},
+            )
+            assert r2.status_code == 429
+
+            # Different client IP through 127.0.0.1 is not blocked
+            r3 = await client.post(
+                "/login",
+                data={"email": "loopback3@example.com", "password": "wrong"},
+                headers={"x-forwarded-for": "198.51.100.20"},
+            )
+            assert r3.status_code == 403
+
+    @pytest.mark.anyio
+    async def test_register_and_admin_login_rate_limiting_with_proxy_middleware(self):
+        """Verify POST /register and POST /admin/login rate limits work correctly through
+
+        the ProxyHeadersMiddleware boundary.
+        """
+        settings.rate_limit_register = "1/minute"
+        settings.rate_limit_admin_login = "1/minute"
+        limiter.reset()
+
+        gateway_ip = "172.28.0.1"
+
+        async with _proxied_client(peer_ip=gateway_ip) as client:
+            # /register for client 1
+            r_reg1 = await client.post(
+                "/register",
+                data={
+                    "email": "reg1@example.com",
+                    "display_name": "R1",
+                    "password": "pw",
+                    "password_confirm": "pw",
+                },
+                headers={"x-forwarded-for": "203.0.113.1"},
+            )
+            assert r_reg1.status_code in (200, 303)
+            assert r_reg1.status_code != 429
+
+            # /register for client 1 second time -> 429
+            r_reg2 = await client.post(
+                "/register",
+                data={
+                    "email": "reg2@example.com",
+                    "display_name": "R2",
+                    "password": "pw",
+                    "password_confirm": "pw",
+                },
+                headers={"x-forwarded-for": "203.0.113.1"},
+            )
+            assert r_reg2.status_code == 429
+
+            # /register for client 2 -> succeeds (independent bucket)
+            r_reg3 = await client.post(
+                "/register",
+                data={
+                    "email": "reg3@example.com",
+                    "display_name": "R3",
+                    "password": "pw",
+                    "password_confirm": "pw",
+                },
+                headers={"x-forwarded-for": "203.0.113.2"},
+            )
+            assert r_reg3.status_code in (200, 303)
+            assert r_reg3.status_code != 429
+
+            # /admin/login for client 3
+            r_adm1 = await client.post(
+                "/admin/login",
+                data={"password": "bad"},
+                headers={"x-forwarded-for": "203.0.113.3"},
+            )
+            assert r_adm1.status_code == 403
+            assert r_adm1.status_code != 429
+
+            # /admin/login for client 3 second time -> 429
+            r_adm2 = await client.post(
+                "/admin/login",
+                data={"password": "bad"},
+                headers={"x-forwarded-for": "203.0.113.3"},
+            )
+            assert r_adm2.status_code == 429
+
+            # /admin/login for client 4 -> 403 (independent bucket, not 429)
+            r_adm3 = await client.post(
+                "/admin/login",
+                data={"password": "bad"},
+                headers={"x-forwarded-for": "203.0.113.4"},
+            )
+            assert r_adm3.status_code == 403
+            assert r_adm3.status_code != 429
+
+    @pytest.mark.anyio
+    async def test_forwarded_allow_ips_wildcard_rejected_by_settings(self):
+        """Settings explicitly rejects wildcard '*' for forwarded_allow_ips to prevent
+
+        direct external clients from spoofing X-Forwarded-For against published port 8000.
+        """
+        # Valid explicit configurations succeed
+        valid_s1 = Settings(forwarded_allow_ips="127.0.0.1,172.28.0.1")
+        assert valid_s1.forwarded_allow_ips == "127.0.0.1,172.28.0.1"
+
+        valid_s2 = Settings(forwarded_allow_ips="127.0.0.1,10.0.0.0/8")
+        assert "10.0.0.0/8" in valid_s2.forwarded_allow_ips
+
+        # Standalone wildcard is rejected
+        with pytest.raises(ValidationError, match="Wildcard '\\*' is forbidden"):
+            Settings(forwarded_allow_ips="*")
+
+        # Wildcard within list is rejected
+        with pytest.raises(ValidationError, match="Wildcard '\\*' is forbidden"):
+            Settings(forwarded_allow_ips="127.0.0.1, *")

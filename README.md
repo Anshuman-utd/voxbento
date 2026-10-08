@@ -118,8 +118,10 @@ The default rate limiter uses an in-process memory backend (`MemoryStorage`). Co
 - Production deployments requiring strict global rate enforcement should configure an external shared backend (such as Redis) or operate with a single worker per instance behind an upstream rate-limiting reverse proxy until shared storage is supported.
 
 When deployed behind a reverse proxy (such as Caddy or Nginx):
-- The bundled `Caddyfile` sets `header_up X-Forwarded-For {remote_host}` to forward the client IP.
-- The ASGI server (Uvicorn) must be configured at the deployment boundary to trust ONLY the specific reverse-proxy IP(s) (e.g., via `--forwarded-allow-ips 127.0.0.1` or the specific reverse proxy container/host IP) so `request.client.host` is safely populated. Do not use an unrestricted wildcard (`*`) to prevent forwarded-header spoofing.
+- The bundled `Caddyfile` proxies requests to the portal and forwards the client IP (`X-Forwarded-For`).
+- In the shipped Docker topology, host Caddy connects across the deterministic Docker bridge gateway (`172.28.0.1`).
+- The ASGI server (Uvicorn) is configured with `FORWARDED_ALLOW_IPS=127.0.0.1,172.28.0.1` (`--forwarded-allow-ips`), trusting forwarded headers strictly from the Docker bridge gateway and localhost.
+- Port 8000 is published on the host, so unrestricted wildcards (`*`) must **never** be used; untrusted direct connections to port 8000 cannot spoof `X-Forwarded-For` because their source IP is rejected by Uvicorn's proxy headers middleware.
 
 
 ---

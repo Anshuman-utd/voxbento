@@ -189,7 +189,13 @@ app.include_router(ws_router)
 def main() -> None:
     import uvicorn
 
-    uvicorn.run("fastapi_app:app", host=settings.host, port=settings.port, reload=settings.debug)
+    uvicorn.run(
+        "fastapi_app:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
+    )
 
 
 if __name__ == "__main__":
