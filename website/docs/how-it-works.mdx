@@ -235,3 +235,10 @@ manual synchronization, not shared encoder timecode.
 
 See the repository's `docs/program-stream-ingest.md` for rollout, security limits,
 encoder compatibility, capacity and the required two-destination rehearsal.
+
+## Production deployment
+
+Production deployment builds and validates a separate candidate checkout before
+updating the live checkout. The portal reads code and dependencies from its Docker
+image and receives `.env` settings through Compose. See the
+[deployment preflight](configuration/deployment.mdx#deployment-preflight).

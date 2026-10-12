@@ -60,6 +60,10 @@ Floor Audio Bot (floor-bot)
 
 ### Option 1 — Docker Compose (everything in containers)
 
+The portal runs code from its image; rebuild to apply changes. Production updates
+validate a separate candidate checkout before replacing services; see the
+[deployment guide](website/docs/configuration/deployment.mdx#deployment-preflight).
+
 All services (portal, MediaMTX, Jitsi) start with one command:
 
 ```bash

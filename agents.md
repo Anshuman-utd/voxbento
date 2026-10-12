@@ -229,7 +229,7 @@ sequence. One portal replica; program media never traverses Python. Read
 Every PR that adds, removes, or changes a feature **must** update these files in the same commit:
 
 - `README.md` — operational usage and setup
-- `docs/how-it-works.mdx` — system design
+- `website/docs/how-it-works.mdx` — system design
 - `agents.md` (this file) — guardrails, if they changed
 - Relevant context file in `.agents/context/` — if the change affects routes, DB schema, or transcription
 
@@ -237,3 +237,7 @@ Do not defer documentation to a follow-up PR.
 
 Admin password sign-in requires `User.email_verified`; `/admin/login` and `/login`
 share the `login` rate-limit bucket (10 attempts per normalized email per hour).
+
+Production deployments validate a separate candidate checkout before advancing
+the live checkout. Portal source and dependencies must come from the built image,
+with persistent data volumes retained under the `voxbento` Compose project.

@@ -5,6 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -39,10 +42,7 @@ services:
       #   DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/interpretation
       DATABASE_URL: "${DATABASE_URL:-sqlite+aiosqlite:////data/interpretation.db}"
     volumes:
-      # Mount source for hot-reload — code changes take effect instantly
-      - .:/app
-      # Keep the container's .venv intact (don't override with host .venv)
-      - /app/.venv
+      # Source and dependencies come from the image, never the live checkout.
       # Persist database across container restarts
       - portal-data:/data
       # Persist Supertonic ONNX model weights (~400MB) across restarts
