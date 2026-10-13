@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from portal import meeting_source
@@ -97,6 +98,7 @@ from portal.workspace_routing import management_template_context, management_url
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
 
+logger = logging.getLogger(__name__)
 templates = Jinja2Templates(
     directory=str(_BASE_DIR / "templates"),
     context_processors=[management_template_context],
@@ -692,8 +694,20 @@ async def admin_event_api_settings_post(
 
 @router.post("/admin/events/{event_id}/delete", dependencies=[Depends(require_event_owner)])
 async def admin_delete_event(request: Request, event_id: int):
-    async with get_session() as session:
-        await delete_event(session, event_id)
+    """Delete an event by ID, returning 404 if missing or redirecting with an error alert on database failure."""
+    try:
+        async with get_session() as session:
+            deleted = await delete_event(session, event_id)
+            if not deleted:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found.")
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Failed to delete event {event_id}: {e}")
+        return safe_redirect(
+            url=management_url(request, "events/?error=delete_failed"),
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     return safe_redirect(url=management_url(request, "events/"), status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -879,7 +893,6 @@ async def get_translation_models():
     return TRANSLATION_MODELS
 
 
-logger = logging.getLogger(__name__)
 MAX_AUDIO_DELAY_MS = 10_000
 
 
