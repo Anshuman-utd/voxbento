@@ -13,7 +13,7 @@
 
 VoxBento is a real-time interpretation platform for live events. Interpreters monitor the floor in Jitsi and publish translated audio from the browser, while attendees listen with low-latency WebRTC playback.
 
-**Quick links:** [Documentation](https://docs.voxbento.com) · [Contributing](CONTRIBUTING.md) · [VoxBento Local](https://voxbento.org/local)
+**Quick links:** [Documentation](https://docs.voxbento.com) · [Contributing](CONTRIBUTING.md) · [VoxBento Local](https://voxbento.com/local)
 
 ### Why VoxBento
 
