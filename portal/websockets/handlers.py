@@ -56,6 +56,12 @@ async def ws_booth(websocket: WebSocket, booth_id: str) -> None:
                 await websocket.send_text(json.dumps({"type": "booth:error", "message": "Invalid JSON."}))
                 continue
 
+            if not isinstance(data, dict):
+                await websocket.send_text(
+                    json.dumps({"type": "booth:error", "message": "Message must be a JSON object."})
+                )
+                continue
+
             await booth_protocol.dispatch(websocket, session, data)
     except WebSocketDisconnect:
         pass

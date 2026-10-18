@@ -35,6 +35,10 @@ class BoothProtocolCoordinator:
 
     async def dispatch(self, ws: WebSocket, session: Session, data: dict) -> None:
         """Route incoming decoded message dictionary to the appropriate protocol handler."""
+        if not isinstance(data, dict):
+            await ws.send_text(json.dumps({"type": "booth:error", "message": "Message must be a JSON object."}))
+            return
+
         msg_type = data.get("type", "")
         if msg_type == "booth:join":
             await self.handle_join(ws, session, data)
