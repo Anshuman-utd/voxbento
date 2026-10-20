@@ -898,11 +898,11 @@ class TestAccountPage:
         link = f"/interpreter/zephyr-2031/{room.id}/ja"
 
         async with _client() as c:
-            account = await c.get("/account", cookies={"user_token": token})
+            my_events = await c.get("/workspace/", cookies={"user_token": token})
             booth_page = await c.get(link, follow_redirects=False)
 
-        assert f'href="{link}"' in account.text
-        assert 'href="/interpreter/zephyr-2031/ja"' not in account.text
+        assert f'href="{link}"' in my_events.text
+        assert 'href="/interpreter/zephyr-2031/ja"' not in my_events.text
         assert booth_page.status_code == 303
         assert booth_page.headers["location"].startswith(f"/login?next={link}")
 

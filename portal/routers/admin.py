@@ -92,7 +92,7 @@ from portal.email import (
     send_hosting_request_declined_email,
     send_role_invite_email,
 )
-from portal.globals import _JS_CACHE_BUST, booths
+from portal.globals import _JS_CACHE_BUST, asset_version_context, booths
 from portal.hosting_requests import DECLINE_REASON_MAX, format_event_dates, multi_line
 from portal.models import (
     HOSTING_REQUEST_DECLINED,
@@ -128,7 +128,7 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(
     directory=str(_BASE_DIR / "templates"),
-    context_processors=[management_template_context, user_menu_context],
+    context_processors=[management_template_context, user_menu_context, asset_version_context],
 )
 
 

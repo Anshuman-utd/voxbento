@@ -288,3 +288,25 @@ async def test_short_user_label():
     assert short_user_label("Lukas Becker", "lukas@example.org") == "Lukas"
     assert short_user_label("", "priya.k@example.org") == "priya.k"
     assert short_user_label("Hong", "hong@example.org") == "Hong"
+
+
+@pytest.mark.anyio
+async def test_signed_in_pages_version_their_stylesheets_and_scripts():
+    # Static files are cached for hours; a per-deploy version stops browsers
+    # pairing new HTML with old CSS (which left My events unstyled).
+    from portal.globals import _JS_CACHE_BUST
+
+    _, cookies = await make_user("hong@example.org", "Hong", is_admin=True)
+    expected = {
+        "/workspace/": ("css/admin.css", "css/app-header.css", "js/user-menu.js"),
+        "/admin/": ("css/admin.css", "css/app-header.css", "js/admin.js"),
+        "/mission-control/": ("css/admin.css", "css/app-header.css"),
+        "/account": ("css/account-area.css", "css/app-header.css", "js/account.js", "css/interpreter.css"),
+        "/developer": ("css/admin.css", "css/app-header.css"),
+    }
+    async with client() as http:
+        for path, assets in expected.items():
+            res = await http.get(path, cookies=cookies)
+            assert res.status_code == 200, path
+            for asset in assets:
+                assert f"/static/{asset}?v={_JS_CACHE_BUST}" in res.text, (path, asset)

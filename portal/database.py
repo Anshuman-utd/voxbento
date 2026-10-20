@@ -672,6 +672,11 @@ async def delete_user(session: AsyncSession, user_id: int) -> bool:
     return True
 
 
+async def get_developer_account(session: AsyncSession, user_id: int) -> DeveloperAccount | None:
+    stmt = select(DeveloperAccount).where(DeveloperAccount.user_id == user_id).order_by(DeveloperAccount.id.desc())
+    return (await session.execute(stmt.limit(1))).scalars().first()
+
+
 async def has_approved_developer_app(session: AsyncSession, user_id: int) -> bool:
     stmt = select(DeveloperAccount.id).where(
         DeveloperAccount.user_id == user_id,

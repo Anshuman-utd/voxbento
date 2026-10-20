@@ -17,7 +17,10 @@
 | GET | `/login` | open | `login.html` | Redirects to `/account` or `?next=` if logged in |
 | POST | `/login` | open | `login.html` | Verifies bcrypt, sets `user_token` cookie |
 | GET | `/logout` | open | — | Deletes `user_token` cookie → `/` |
-| GET | `/account` | user | `account.html` | Shows profile + event memberships; Hosting events section shows Request access / Request sent (waiting for review) / has access |
+| GET | `/account` | user | `account.html` | Account (#767): Profile (display name), Hosting events (Request access / Request sent / has access), Developer API (apply / pending / approved / rejected / suspended), Sign-in (change, set or remove password). Roles live on My events (`/workspace/`) |
+| POST | `/account/profile` | user + same-origin | — | Changes `display_name` (whitespace collapsed, 1–200 chars, no control characters) → `/account?success=profile_saved`, or `?error=display_name` |
+| POST | `/api/auth/set-password` | user | — | JSON `{password, current_password}`; `current_password` is required when the user already has a password (403 otherwise); min 8 chars |
+| POST | `/api/auth/remove-password` | user | — | JSON `{password}`; verifies it, then clears `password_hash` so the user signs in with email links only |
 | GET | `/account/hosting-request` | user | `account_hosting_request.html` | Hosting access request form (#768); redirects to `/account` for hosts, Admins and people with an open request |
 | POST | `/account/hosting-request` | user + same-origin | `account_hosting_request.html` | Validates, saves `HostingRequest`, emails `HOSTING_REQUESTS_EMAIL` → `/account?success=hosting_request_sent`; 400 re-renders the form with errors |
 | GET | `/join/{token}` | open | — | Validates invite token, sets `session_token` → booth or listener |

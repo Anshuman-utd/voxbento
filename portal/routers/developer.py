@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from portal.auth import require_user
 from portal.database import get_db_session
+from portal.globals import asset_version_context
 from portal.models import DeveloperAccount, OAuthAuditLog, OAuthClient, WebhookSubscription
 from portal.user_menu import resolve_user_menu, user_menu_context
 
@@ -22,7 +23,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(resolve_user_menu)])
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(_BASE_DIR / "templates"), context_processors=[user_menu_context])
+templates = Jinja2Templates(
+    directory=str(_BASE_DIR / "templates"), context_processors=[user_menu_context, asset_version_context]
+)
 
 
 @router.get("/developer", include_in_schema=False)

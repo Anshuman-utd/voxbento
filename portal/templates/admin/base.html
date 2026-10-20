@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %}{{ user_menu.area_label if user_menu else 'VoxBento' }}{% endblock %} — Voxbento</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', path='img/favicon.ico') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', path='css/fonts.css') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', path='css/admin.css') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', path='css/app-header.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/fonts.css') }}?v={{ asset_version }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/admin.css') }}?v={{ asset_version }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='css/app-header.css') }}?v={{ asset_version }}" />
     {% block head %}{% endblock %}
   </head>
   <body data-management-prefix="{{ management_prefix }}" data-management-api-prefix="{{ management_api_prefix }}">
@@ -56,7 +56,7 @@
          aria-live so both sighted and assistive-tech users get the same confirmation. -->
     <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
 
-    <script type="module" src="{{ url_for('static', path='js/admin.js') }}"></script>
-    <script type="module" src="{{ url_for('static', path='js/user-menu.js') }}"></script>
+    <script type="module" src="{{ url_for('static', path='js/admin.js') }}?v={{ asset_version }}"></script>
+    <script type="module" src="{{ url_for('static', path='js/user-menu.js') }}?v={{ asset_version }}"></script>
   </body>
 </html>

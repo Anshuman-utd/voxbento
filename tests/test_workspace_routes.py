@@ -275,12 +275,13 @@ async def test_organizer_navigation_points_to_workspace(organizer):
     async with client() as http:
         home = await http.get("/", cookies=organizer["cookies"])
         account = await http.get("/account", cookies=organizer["cookies"])
+        my_events = await http.get("/workspace/", cookies=organizer["cookies"])
 
     assert home.status_code == 200
     assert 'href="/workspace/"' in home.text
     assert account.status_code == 200
     assert 'class="app-user-item" href="/workspace/"' in account.text
-    assert f'href="/workspace/events/{organizer["event_id"]}/"' in account.text
+    assert f'href="/workspace/events/{organizer["event_id"]}/"' in my_events.text
 
 
 @pytest.mark.anyio
@@ -409,14 +410,15 @@ async def test_room_coordinator_navigation_uses_mission_control(organizer):
     async with client() as http:
         home = await http.get("/", cookies=coordinator_cookies)
         account = await http.get("/account", cookies=coordinator_cookies)
+        my_events = await http.get("/workspace/", cookies=coordinator_cookies)
 
     assert home.status_code == 200
     assert 'href="/mission-control/"' in home.text
     assert 'href="/workspace/"' not in home.text
     assert account.status_code == 200
     assert 'class="app-user-item" href="/workspace/"' in account.text
-    assert 'href="/mission-control/shared-event/"' in account.text
-    assert f'href="/workspace/events/{organizer["event_id"]}/"' not in account.text
+    assert 'href="/mission-control/shared-event/"' in my_events.text
+    assert f'href="/workspace/events/{organizer["event_id"]}/"' not in my_events.text
 
 
 @pytest.mark.anyio

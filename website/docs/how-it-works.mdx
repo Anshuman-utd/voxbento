@@ -205,6 +205,18 @@ person has a role in, combining event, room and booth memberships into one card
 per event: "Event owner", "Room coordinator · Room 1", "Interpreter · Grand Hall ·
 Chinese", each with a button to where they work. Deleted events are hidden.
 
+## Account page
+
+`/account` is about the person themselves, in four sections. **Profile** changes
+the display name (`POST /account/profile`); the email is shown but can't be
+changed there. **Hosting events** shows Request access, the open request
+waiting for review, or a link to My events. **Developer API** shows the
+application state from `developer_accounts`: apply (links to `/developer`),
+pending with its date, approved with a link to the Developer API page, or
+rejected/suspended. **Sign-in** changes the password (the current one is
+required), sets a first password, or removes it so the person signs in with
+email links only. Event, room and booth roles are listed on My events instead.
+
 ## Administrative access
 
 Administrative access is tied to registered user accounts rather than a shared

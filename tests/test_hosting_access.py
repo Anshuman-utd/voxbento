@@ -662,13 +662,13 @@ async def test_new_event_button_visibility():
 
     token_revoked = create_user_token(user_id=revoked_id, email="revoked@example.com")
     async with client() as http:
-        # On /account:
-        # 1. Event row is active, context link is clickable (Issue #761: revocation does not block access to owned events)
+        # 1. My events still links to the owned event (Issue #761: revocation does not block access to owned events)
+        res_rev_events = await http.get("/workspace/", cookies={"user_token": token_revoked})
+        assert res_rev_events.status_code == 200
+        assert f'href="/workspace/events/{event_id}/" class="me-action">Manage event</a>' in res_rev_events.text
+        assert 'href="/workspace/setup"' not in res_rev_events.text
         res_rev_account = await http.get("/account", cookies={"user_token": token_revoked})
         assert res_rev_account.status_code == 200
-        assert "account-row--disabled" not in res_rev_account.text
-        assert "Access Suspended" not in res_rev_account.text
-        assert f'href="/workspace/events/{event_id}/"' in res_rev_account.text
         # 2. Hosting events card says access was removed and offers Request access again
         assert "Hosting access was removed" in res_rev_account.text
         assert 'href="/account/hosting-request"' in res_rev_account.text

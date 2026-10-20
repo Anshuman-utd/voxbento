@@ -31,7 +31,9 @@ Every signed-in page shares one header: the VoxBento logo with the current area
 in the top right with the person's name. The menu always lists **My events**,
 **Account** and **Logout**, plus **Developer API** for users with an approved
 developer app and **Admin** for Admins. **My events** (`/workspace/`) lists every
-event the person has a role in, with a button to where they work.
+event the person has a role in, with a button to where they work. **Account**
+(`/account`) holds the person's display name, hosting and developer access, and
+sign-in settings (change, set or remove a password).
 
 ## Hosting access
 
