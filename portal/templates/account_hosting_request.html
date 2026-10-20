@@ -7,7 +7,15 @@
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/auth.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', path='css/account-area.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', path='css/app-header.css') }}" />
+<script type="module" src="{{ url_for('static', path='js/user-menu.js') }}"></script>
 {% endblock %}
+
+{% block header %}
+{% from "_app_header.html" import app_header with context %}
+{{ app_header() }}
+{% endblock %}
+
 
 {% macro field_error(name) -%}
   {% if errors.get(name) %}
@@ -20,7 +28,6 @@
 {%- endmacro %}
 
 {% block content %}
-{% include "_account_header.html" %}
 
 <div class="aa-page">
   <nav class="aa-breadcrumb" aria-label="Breadcrumb">

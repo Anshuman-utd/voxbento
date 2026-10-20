@@ -625,17 +625,20 @@ async def test_new_event_button_visibility():
     token_host = create_user_token(user_id=host_id, email="host_btn@example.com")
 
     async with client() as http:
-        # Non-host on account page sees no Organizer Workspace nav link and sees Request access
+        # Non-host on account page sees Request access; My events has no New event button
         res_nh_account = await http.get("/account", cookies={"user_token": token_non_host})
         assert res_nh_account.status_code == 200
         assert 'href="/account/hosting-request"' in res_nh_account.text
-        assert 'href="/workspace/">Organizer Workspace</a>' not in res_nh_account.text
+        res_nh_events = await http.get("/workspace/", cookies={"user_token": token_non_host})
+        assert res_nh_events.status_code == 200
+        assert 'href="/workspace/setup"' not in res_nh_events.text
 
-        # Host on account page sees Organizer Workspace and Go to My Events
+        # Host on account page sees Go to My events; My events has the New event button
         res_h_account = await http.get("/account", cookies={"user_token": token_host})
         assert res_h_account.status_code == 200
-        assert 'href="/workspace/">Organizer Workspace</a>' in res_h_account.text
         assert "Go to My events" in res_h_account.text
+        res_h_my_events = await http.get("/workspace/", cookies={"user_token": token_host})
+        assert 'href="/workspace/setup" class="me-new-event"' in res_h_my_events.text
 
         # Host on workspace sees + New event button
         res_h_events = await http.get("/workspace/events/", cookies={"user_token": token_host})

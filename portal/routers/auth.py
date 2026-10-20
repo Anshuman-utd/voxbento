@@ -59,10 +59,11 @@ from portal.hosting_requests import format_event_dates, parse_hosting_request_fo
 from portal.models import HOSTING_REQUEST_GRANTED, TOKEN_TYPE_HOSTING_INVITE, AuthToken, User, utc_now
 from portal.rate_limit import check_rate_limit
 from portal.schemas.auth import TokenRequest, TokenResponse
+from portal.user_menu import resolve_user_menu, user_menu_context
 from portal.utils import safe_redirect, verify_same_origin
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(directory=str(_BASE_DIR / "templates"))
+templates = Jinja2Templates(directory=str(_BASE_DIR / "templates"), context_processors=[user_menu_context])
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -756,6 +757,7 @@ async def account_page(request: Request):
         room_memberships = await list_room_memberships_for_user(session, user.id)
         booth_memberships = await list_booth_memberships_for_user(session, user.id)
         open_hosting_request = await get_open_hosting_request(session, user.id)
+    await resolve_user_menu(request)
 
     unified_memberships = []
     coordinated_event_slugs = {

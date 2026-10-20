@@ -98,8 +98,9 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 
 /* ── Breadcrumb ──────────────────────────────────────────────────────────── */
 
+/* Side padding keeps the trail lined up with the header and page content. */
 .breadcrumb {
-  padding: 12px 24px;
+  padding: 12px max(56px, (100% - 1280px) / 2);
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
   background: var(--color-surface);
@@ -112,15 +113,14 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 
 /* ── Main ────────────────────────────────────────────────────────────────── */
 
+/* Lines up with the shared header (app-header.css): 1280px wide, 56px gutters. */
 .admin-main {
-  max-width: 1200px;
+  width: min(1280px, 100% - 112px);
   margin: 0 auto;
-  padding: 24px;
-  width: 100%;
+  padding: 36px 0 48px;
   min-width: 0;
   flex: 1;
 }
-.admin-main--flush-top { padding-top: 0; }
 
 /* ── Page Header ─────────────────────────────────────────────────────────── */
 
@@ -398,9 +398,9 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 }
 
 /* Mission Control layout */
+/* The page container (.admin-main) already sets width and gutters, so Mission
+   Control lines up with the header like every other page. */
 .mc-container {
-  max-width: 1400px;
-  padding: 1rem;
   margin-top: 0;
 }
 .mc-container--list { margin-top: 2rem; }
@@ -528,7 +528,9 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
 
 @media (max-width: 768px) {
   .admin-header, .portal-home-header { padding: 12px 16px; }
-  .admin-main, .home-main { padding: 16px; }
+  .admin-main { width: calc(100% - 32px); padding: 16px 0 32px; }
+  .breadcrumb { padding: 10px 16px; }
+  .home-main { padding: 16px; }
   .card-grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
   .inline-form { flex-direction: column; align-items: stretch; }
@@ -1358,4 +1360,56 @@ code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color
   .ha-request-facts { grid-template-columns: 1fr; }
   .ha-request-actions .btn, .ha-request-actions form { flex: 1 1 auto; }
   .ha-request-actions form .btn { width: 100%; }
+}
+
+/* ── My events (#766) ────────────────────────────────────────────────────── */
+
+.me-header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.me-title { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-text); margin: 0 0 4px; }
+.me-subtitle { margin: 0; font-size: 1rem; color: var(--color-text-secondary); }
+.me-new-event {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 20px;
+  border-radius: 8px; background: #1d4ed8; color: #fff; font-size: 0.9375rem; font-weight: 600; text-decoration: none;
+}
+.me-new-event:hover { background: #1e40af; color: #fff; text-decoration: none; }
+.me-new-event svg { width: 16px; height: 16px; }
+
+.me-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.me-card {
+  display: flex; flex-direction: column; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: 12px; padding: 16px 20px 20px;
+}
+.me-card-title { margin: 0; font-size: 1.125rem; font-weight: 700; color: var(--color-text); overflow-wrap: anywhere; }
+.me-card-meta { margin: 3px 0 0; font-size: 0.9rem; color: var(--color-text-secondary); }
+.me-roles { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.me-role {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; background: #eef1f6;
+  font-size: 0.8125rem; font-weight: 600; color: #344054;
+}
+.me-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 16px; }
+.me-action {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; border-radius: 8px;
+  border: 1px solid var(--color-border-strong); background: var(--color-surface);
+  color: var(--color-text); font-size: 0.875rem; font-weight: 600; text-decoration: none;
+}
+.me-action:hover { background: var(--color-surface-2); color: var(--color-text); text-decoration: none; }
+
+.me-empty {
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px;
+  padding: 56px 24px 55px; text-align: center;
+}
+.me-empty-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px;
+  border-radius: 50%; background: #eef1f6; color: #344054;
+}
+.me-empty-icon svg { width: 24px; height: 24px; }
+.me-empty-title { margin: 8px 0 6px; font-size: 1.25rem; font-weight: 700; color: var(--color-text); }
+.me-empty-text { margin: 0 auto; max-width: 440px; font-size: 0.9375rem; line-height: 1.6; color: var(--color-text-secondary); }
+
+@media (max-width: 1024px) {
+  .me-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .me-grid { grid-template-columns: 1fr; }
+  .me-title { font-size: 1.6rem; }
 }

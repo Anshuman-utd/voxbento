@@ -34,6 +34,7 @@ from portal.models import (
     Base,
     BoothMembership,
     DBBooth,
+    DeveloperAccount,
     Event,
     EventAPIKey,
     EventMembership,
@@ -669,6 +670,14 @@ async def delete_user(session: AsyncSession, user_id: int) -> bool:
     await session.delete(user)
     await session.flush()
     return True
+
+
+async def has_approved_developer_app(session: AsyncSession, user_id: int) -> bool:
+    stmt = select(DeveloperAccount.id).where(
+        DeveloperAccount.user_id == user_id,
+        DeveloperAccount.status == "approved",
+    )
+    return (await session.execute(stmt.limit(1))).first() is not None
 
 
 # ---------------------------------------------------------------------------

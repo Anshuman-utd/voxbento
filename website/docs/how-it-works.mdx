@@ -190,6 +190,21 @@ For example:
 
 Listeners connected to the caption WebSocket receive transcription segments as they are produced. The caption stream is independent of the audio stream — listeners can receive captions even while audio is playing through WHEP or HLS.
 
+## Shared header and user menu
+
+Every signed-in page (Admin, My events and its event pages, Mission Control,
+Account, Developer API) renders the same header from `_app_header.html`: the
+VoxBento logo with the name of the current area, the area's page links, and the
+user menu. `portal/user_menu.py` builds the menu from the request principal: My
+events, Account, Developer API (only with an approved developer app), Admin (only
+for Admins) and Logout, with the current area highlighted. A router dependency
+loads the principal once per request so templates never query the database.
+
+**My events** at `/workspace/` (`portal/my_events.py`) lists every event the
+person has a role in, combining event, room and booth memberships into one card
+per event: "Event owner", "Room coordinator · Room 1", "Interpreter · Grand Hall ·
+Chinese", each with a button to where they work. Deleted events are hidden.
+
 ## Administrative access
 
 Administrative access is tied to registered user accounts rather than a shared

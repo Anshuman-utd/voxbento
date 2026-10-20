@@ -7,10 +7,17 @@
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/auth.css') }}" />
 <link rel="stylesheet" href="{{ url_for('static', path='css/account-area.css') }}" />
+<link rel="stylesheet" href="{{ url_for('static', path='css/app-header.css') }}" />
+<script type="module" src="{{ url_for('static', path='js/user-menu.js') }}"></script>
 {% endblock %}
 
+{% block header %}
+{% from "_app_header.html" import app_header with context %}
+{{ app_header() }}
+{% endblock %}
+
+
 {% block content %}
-{% include "_account_header.html" %}
 
 <main class="admin-main account-main">
   {% if hosting_request_sent %}

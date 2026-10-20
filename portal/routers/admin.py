@@ -112,11 +112,13 @@ from portal.models import (
     User,
     utc_now,
 )
+from portal.my_events import list_my_events
 from portal.program_ingest import room_lock
 from portal.rate_limit import check_rate_limit
 from portal.transcription import ALLOWED_MODELS, ProviderConfig, ProviderEnum, get_api_key
 from portal.transcription.worker import start_transcription_worker, stop_transcription_worker
 from portal.translations.constants import TRANSLATION_MODELS, TranslationProviderEnum
+from portal.user_menu import resolve_user_menu, user_menu_context
 from portal.utils import _check_mediamtx, _make_jitsi_url, get_client_ip, safe_redirect, verify_same_origin
 from portal.websockets.manager import broadcast_transcription
 from portal.workspace_routing import management_template_context, management_url
@@ -126,7 +128,7 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(
     directory=str(_BASE_DIR / "templates"),
-    context_processors=[management_template_context],
+    context_processors=[management_template_context, user_menu_context],
 )
 
 
@@ -148,7 +150,8 @@ async def _send_admin_invite(session, user: User, role_name: str, context_name: 
     await send_role_invite_email(user.email, invite_url, role_name, context_name)
 
 
-router = APIRouter()
+# Loads the signed-in person once per request for the shared header and user menu.
+router = APIRouter(dependencies=[Depends(resolve_user_menu)])
 
 # Common languages offered in the guided setup wizard booth picker.
 COMMON_LANGUAGES: list[tuple[str, str]] = [
@@ -327,6 +330,27 @@ async def admin_logout():
     response.delete_cookie("user_token")
     response.delete_cookie("session_token")
     return response
+
+
+@router.get("/workspace")
+@router.get("/workspace/")
+async def my_events_page(request: Request):
+    """"My events": every event the signed-in person has a role in (#766)."""
+    principal = request.state.principal
+    user = principal["user"]
+    if user is None:
+        return safe_redirect(url="/login?next=/workspace/", status_code=status.HTTP_303_SEE_OTHER)
+    request.state.is_workspace = True
+    async with get_session() as session:
+        my_events = await list_my_events(session, user.id)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/my_events.html",
+        context={
+            "my_events": my_events,
+            "can_create_events": principal["can_host"] or principal["is_super_admin"],
+        },
+    )
 
 
 @router.get("/admin/", dependencies=[Depends(require_admin)])

@@ -24,6 +24,15 @@ VoxBento is a real-time interpretation platform for live events. Interpreters mo
 
 ---
 
+## Signed-in pages
+
+Every signed-in page shares one header: the VoxBento logo with the current area
+(**Admin**, **My events** or **Account**), that area's page links, and a user menu
+in the top right with the person's name. The menu always lists **My events**,
+**Account** and **Logout**, plus **Developer API** for users with an approved
+developer app and **Admin** for Admins. **My events** (`/workspace/`) lists every
+event the person has a role in, with a button to where they work.
+
 ## Hosting access
 
 Only people with hosting access can create events. A signed-in user without it
