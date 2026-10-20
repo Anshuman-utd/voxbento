@@ -84,6 +84,9 @@
 | POST | `/admin/events/{event_id}/rooms/` | — | Creates room; auto-generates Jitsi URL |
 | GET | `/admin/events/{event_id}/rooms/{room_id}/` | `admin/room_detail.html` | Room + booths |
 | POST | `/admin/events/{event_id}/rooms/{room_id}/edit` | — | Updates jitsi_url + relay_booth_id |
+| POST | `/admin/events/{event_id}/rooms/{room_id}/ai-vocabulary/upload` | — | Upload CSV glossary entries for room AI interpretation |
+| GET | `/admin/events/{event_id}/rooms/{room_id}/ai-vocabulary/export` | — | Export room AI interpretation glossary as CSV |
+| POST | `/admin/events/{event_id}/rooms/{room_id}/ai-vocabulary/delete` | — | Delete specific entry or clear all room glossary entries |
 | POST | `/admin/events/{event_id}/rooms/{room_id}/delete` | — | Deletes room and dependent data only if room belongs to path event; 404 on missing/mismatched room |
 | GET | `/admin/events/{event_id}/rooms/{room_id}/booths/` | `admin/booth_list.html` | — |
 | POST | `/admin/events/{event_id}/rooms/{room_id}/booths/` | — | Creates DBBooth |

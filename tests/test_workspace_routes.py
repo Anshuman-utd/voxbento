@@ -64,6 +64,18 @@ def client():
             "/workspace/events/1/rooms/2/booths/3/tokens/" + "a1b2c3d4" * 8 + "/revoke",
             "/admin/events/1/rooms/2/booths/3/tokens/" + "a1b2c3d4" * 8 + "/revoke",
         ),
+        (
+            "/workspace/events/1/rooms/2/ai-vocabulary/upload",
+            "/admin/events/1/rooms/2/ai-vocabulary/upload",
+        ),
+        (
+            "/workspace/events/1/rooms/2/ai-vocabulary/export",
+            "/admin/events/1/rooms/2/ai-vocabulary/export",
+        ),
+        (
+            "/workspace/events/1/rooms/2/ai-vocabulary/delete",
+            "/admin/events/1/rooms/2/ai-vocabulary/delete",
+        ),
     ],
 )
 @pytest.mark.anyio
@@ -96,6 +108,7 @@ async def test_my_events_is_not_mapped_but_legacy_admin_home_still_points_to_it(
         "/workspace/events/1/rooms/2/booths/3/tokens/abc123/revoke",
         "/workspace/events/1/rooms/2/booths/3/tokens/" + "A1B2C3D4" * 8 + "/revoke",
         "/workspace/events/1/rooms/2/booths/3/tokens/" + "a1b2c3d4" * 8 + "0/revoke",
+        "/workspace/events/1/rooms/2/ai-vocabulary/bogus",
     ],
 )
 @pytest.mark.anyio
