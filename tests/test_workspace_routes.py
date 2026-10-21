@@ -214,7 +214,8 @@ async def test_admin_nav_is_complete_on_event_pages(organizer, page):
         response = await http.get(f"/admin/events/{organizer['event_id']}/{page}", cookies=cookies)
 
     assert response.status_code == 200
-    assert 'href="/mission-control/"' in response.text
+    # Admins open Mission Control from each event, not from an Admin tab.
+    assert 'href="/mission-control/"' not in response.text
     assert 'href="/admin/users/"' in response.text
     assert 'href="/admin/developer-accounts"' in response.text
 
