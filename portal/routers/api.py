@@ -24,6 +24,7 @@ from portal.database import (
 from portal.globals import booths
 from portal.models import DBBooth, Event, EventMembership, Room, RoomMembership
 from portal.rate_limit import check_rate_limit
+from portal.roles import EVENT_OWNER, INTERPRETER, ROOM_COORDINATOR
 from portal.schemas.booth import CreateBoothRequest
 from portal.transcription import ProviderConfig, ProviderEnum, get_api_key
 from portal.transcription.worker import start_transcription_worker, stop_transcription_worker
@@ -86,7 +87,7 @@ async def _verify_event_access(
                 select(EventMembership.id).where(
                     EventMembership.user_id == user.id,
                     EventMembership.event_id == event_id,
-                    EventMembership.role == "event_owner",
+                    EventMembership.role == EVENT_OWNER,
                 )
             )
             if is_event_owner:
@@ -96,7 +97,7 @@ async def _verify_event_access(
                     select(RoomMembership.id).where(
                         RoomMembership.user_id == user.id,
                         RoomMembership.room_id == room_id,
-                        RoomMembership.role == "room_coordinator",
+                        RoomMembership.role == ROOM_COORDINATOR,
                     )
                 )
                 if is_room_coordinator and not require_booth_management:
@@ -432,7 +433,7 @@ async def create_event_booth(
         invite = await create_invite_token(
             session,
             booth_id=db_booth.id,
-            role="interpreter",
+            role=INTERPRETER,
             label="API Provisioned",
         )
         await session.flush()

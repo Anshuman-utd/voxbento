@@ -48,6 +48,7 @@ from portal.models import (
     generate_token,
     utc_now,
 )
+from portal.roles import EVENT_OWNER
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ async def create_event(
         membership = EventMembership(
             event_id=ev.id,
             user_id=owner_user_id,
-            role="event_owner",
+            role=EVENT_OWNER,
         )
         session.add(membership)
         await session.flush()

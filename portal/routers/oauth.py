@@ -29,6 +29,7 @@ from portal.models import (
     OAuthToken,
 )
 from portal.rate_limit import auth_rate_limiter, token_rate_limiter
+from portal.roles import EVENT_OWNER, ROOM_COORDINATOR
 from portal.utils import safe_redirect
 
 logger = logging.getLogger(__name__)
@@ -96,9 +97,8 @@ async def get_effective_scopes(
     # Check if user has RoomMembership in this event (for room_coordinators)
     # simplified for now: if they have any role in the event, we grant scopes they requested
     # that map to their role.
-    # Accept "owner" as a synonym for "event_owner" (e.g. roles synced from Eventyay)
-    is_event_admin = event_membership and event_membership.role in ("event_owner", "super_admin", "owner")
-    is_room_coordinator = event_membership and event_membership.role == "room_coordinator"
+    is_event_admin = event_membership and event_membership.role == EVENT_OWNER
+    is_room_coordinator = event_membership and event_membership.role == ROOM_COORDINATOR
 
     # In a full implementation, we would narrow this down per-room.
     # For MVP, if they are event_owner, they get all they asked for.
@@ -294,8 +294,8 @@ async def authorize_post(
             existing_mem = mem_res.scalars().first()
             if existing_mem:
                 # Upgrade existing lower role (e.g. room_coordinator) to event_owner if confidential client
-                if client.is_confidential and existing_mem.role not in ("event_owner", "super_admin", "owner"):
-                    existing_mem.role = "event_owner"
+                if client.is_confidential and existing_mem.role != EVENT_OWNER:
+                    existing_mem.role = EVENT_OWNER
             else:
                 # Only grant event_owner if event currently has no owners (initial setup)
                 # or if client is confidential and user was verified by the platform
@@ -304,7 +304,7 @@ async def authorize_post(
                         await db.execute(
                             select(EventMembership).where(
                                 EventMembership.event_id == event_id,
-                                EventMembership.role.in_(("event_owner", "super_admin", "owner")),
+                                EventMembership.role == EVENT_OWNER,
                             )
                         )
                     )
@@ -312,7 +312,7 @@ async def authorize_post(
                     .all()
                 )
                 if not existing_owners or client.is_confidential:
-                    db.add(EventMembership(user_id=int(user["sub"]), event_id=event_id, role="event_owner"))
+                    db.add(EventMembership(user_id=int(user["sub"]), event_id=event_id, role=EVENT_OWNER))
             await db.flush()
     except IntegrityError:
         pass
@@ -407,11 +407,11 @@ async def _handle_authorization_code_grant(
                 )
                 membership = membership_result.scalars().first()
                 if membership:
-                    if membership.role not in ("event_owner", "super_admin", "owner"):
-                        membership.role = "event_owner"
+                    if membership.role != EVENT_OWNER:
+                        membership.role = EVENT_OWNER
                 else:
                     membership = EventMembership(
-                        user_id=auth_code.user_id, event_id=auth_code.event_id, role="event_owner"
+                        user_id=auth_code.user_id, event_id=auth_code.event_id, role=EVENT_OWNER
                     )
                     db.add(membership)
                 await db.flush()
@@ -422,8 +422,8 @@ async def _handle_authorization_code_grant(
                 )
             )
             membership = membership_result.scalars().first()
-            if membership and membership.role not in ("event_owner", "super_admin", "owner"):
-                membership.role = "event_owner"
+            if membership and membership.role != EVENT_OWNER:
+                membership.role = EVENT_OWNER
 
     token_record = OAuthToken(
         client_id=client.id,

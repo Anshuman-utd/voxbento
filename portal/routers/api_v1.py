@@ -14,7 +14,6 @@ from portal.database import get_db_session
 from portal.globals import booths
 from portal.models import (
     DBBooth,
-    DeveloperAccount,
     Event,
     EventMembership,
     OAuthAuditLog,
@@ -25,6 +24,7 @@ from portal.models import (
     RoomTranslationLanguage,
 )
 from portal.rate_limit import auth_rate_limiter
+from portal.roles import EVENT_OWNER, ROOM_COORDINATOR
 from portal.transcription.constants import ProviderEnum
 from portal.transcription.worker import active_workers, start_transcription_worker, stop_transcription_worker
 
@@ -63,11 +63,11 @@ async def _verify_token_rbac(db: AsyncSession, token: OAuthToken, event: Event, 
     if client and client.is_confidential and client.status == "active":
         return
 
-    # Check if user is super admin or event owner
+    # Check if user is Admin or event owner
     from portal.models import User
 
     user = await db.get(User, token.user_id)
-    if user and getattr(user, "is_super_admin", False):
+    if user and getattr(user, "is_admin", False):
         return
 
     # Check Event Owner
@@ -75,7 +75,7 @@ async def _verify_token_rbac(db: AsyncSession, token: OAuthToken, event: Event, 
         select(EventMembership).where(
             EventMembership.user_id == token.user_id,
             EventMembership.event_id == event.id,
-            EventMembership.role == "event_owner",
+            EventMembership.role == EVENT_OWNER,
         )
     )
     if evt_mem.scalars().first():
@@ -87,7 +87,7 @@ async def _verify_token_rbac(db: AsyncSession, token: OAuthToken, event: Event, 
             select(RoomMembership).where(
                 RoomMembership.user_id == token.user_id,
                 RoomMembership.room_id == room_id,
-                RoomMembership.role == "room_coordinator",
+                RoomMembership.role == ROOM_COORDINATOR,
             )
         )
         if rm_mem.scalars().first():
@@ -170,7 +170,7 @@ async def _ensure_event_memberships(
 
     from portal.models import EventMembership, User
 
-    async def _upsert_member(uid: int, role: str = "event_owner") -> None:
+    async def _upsert_member(uid: int, role: str = EVENT_OWNER) -> None:
         try:
             async with db.begin_nested():
                 mem_res = await db.execute(
@@ -203,7 +203,7 @@ async def _ensure_event_memberships(
                 pass
 
     if user_id:
-        await _upsert_member(user_id, "event_owner")
+        await _upsert_member(user_id, EVENT_OWNER)
 
     for email_raw in organizer_emails:
         email = email_raw.strip().lower()
@@ -227,7 +227,7 @@ async def _ensure_event_memberships(
                 user_obj = user_res.scalars().first()
 
         if user_obj:
-            await _upsert_member(user_obj.id, "event_owner")
+            await _upsert_member(user_obj.id, EVENT_OWNER)
 
 
 @router.post("/events/", status_code=status.HTTP_201_CREATED)
@@ -263,7 +263,7 @@ async def create_event(
                         select(EventMembership).where(
                             EventMembership.user_id == token.user_id,
                             EventMembership.event_id == existing_event.id,
-                            EventMembership.role.in_(("event_owner", "super_admin", "owner")),
+                            EventMembership.role == EVENT_OWNER,
                         )
                     )
                 )
@@ -294,17 +294,9 @@ async def create_event(
         db.add(event)
         await db.flush()
 
+        # The organizer becomes owner; the app's developer gets no automatic
+        # access (#757). The organizer can add them as a member if they want help.
         await _ensure_event_memberships(db, event.id, token.user_id, payload.organizer_emails)
-
-        client_res = await db.execute(select(OAuthClient).where(OAuthClient.id == token.client_id))
-        client = client_res.scalars().first()
-        if client:
-            dev_acc_res = await db.execute(
-                select(DeveloperAccount).where(DeveloperAccount.id == client.developer_account_id)
-            )
-            dev_acc = dev_acc_res.scalars().first()
-            if dev_acc and dev_acc.user_id != token.user_id:
-                db.add(EventMembership(user_id=dev_acc.user_id, event_id=event.id, role="support"))
 
         action = "event.created"
         status_code_ret = status.HTTP_201_CREATED

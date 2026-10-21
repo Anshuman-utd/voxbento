@@ -1,49 +1,52 @@
 ---
 title: "Manage Event Members and Permissions — Voxbento Admin"
 sidebarTitle: "Roles"
-description: "Assign and remove roles for events and booths, understand the full role hierarchy, and manage user permissions and admin flags in Voxbento."
+description: "The four VoxBento roles (Admin, Event owner, Room coordinator, Interpreter), what each can do, where each can be given, and how to assign them."
 ---
 
-Voxbento uses a role-based permission system that lets you grant each participant exactly the access they need — no more, no less. Roles are scoped per event, so the same person can be an interpreter at one conference and a listener at another. This guide covers the full role hierarchy, how to assign roles at both the event and booth level, and how to manage user account flags.
+VoxBento has four roles. Each one is defined once in `portal/roles.py`, and every page, booth action and API check follows that definition, so changing what a role may do means changing it in one place.
 
-## Role Hierarchy
+## The four roles
 
-Voxbento defines five roles, ordered from most to least privileged:
+| Role | Who it is for | Can be given |
+| --- | --- | --- |
+| **Admin** | People who run the VoxBento platform. | Account-wide (from **Admin → Users**) |
+| **Event owner** | People who run an event: its rooms, booths, team and keys. | Per event |
+| **Room coordinator** | People who run the live session in a room from Mission Control. | Per event, room or booth |
+| **Interpreter** | People who interpret in a booth. | Per event or booth |
 
-```text
-super_admin > event_owner > room_coordinator > interpreter > support > listener
-```
+The word "Admin" means only the platform role. Every other access check is named after the roles it lets in, for example "owner of this event" or "coordinator of this room".
 
-| Role | Description |
-| --- | --- |
-| **super\_admin** | Site-wide admin access. Can manage all events, users, and system settings. |
-| **event\_owner** | Full control over a specific event — manages rooms, booths, generates tokens, and can go live. |
-| **room\_coordinator** | Can go live, reassign the active interpreter, and manage handoffs during a session across a room. |
-| **interpreter** | Can go live (publish audio via WHIP) when designated active and participate in booth chat. |
-| **support** | View-only access to booth status and monitoring feeds without chat or broadcast privileges. |
-| **listener** | Attendee role: connects to public audio streams via WHEP or HLS and receives live captions. |
+**Hosting access is not a role.** It is an account setting that lets a person create new events; whoever creates an event becomes its Event owner.
 
-## Permission Matrix
+**Listening is not a role either.** Anyone with the event link or join code can listen.
 
-The table below shows which actions each role can perform within a booth or event:
+## What each role can do
 
-| Permission | super\_admin | event\_owner | room\_coordinator | interpreter | support | listener |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: |
-| Go Live (publish audio) | ✓ | ✓ | ✓ | ✓ (active only) | — | — |
-| Set Active Interpreter | ✓ | ✓ | ✓ | — | — | — |
-| Chat | ✓ | ✓ | ✓ | ✓ | — | — |
-| Manage Booths | ✓ | ✓ | — | — | — | — |
-| Manage Events | ✓ | — | — | — | — | — |
+| Action | Admin | Event owner | Room coordinator | Interpreter |
+| --- | :-: | :-: | :-: | :-: |
+| Manage users, Admins, hosting access and developer apps | ✓ | | | |
+| See all events on the platform | ✓ | | | |
+| Create new events (also any user with hosting access) | ✓ | | | |
+| Edit and delete their event | ✓ | ✓ | | |
+| Manage rooms, booths, members and invites in their event | ✓ | ✓ | | |
+| Manage AI provider keys and API keys of their event | ✓ | ✓ | | |
+| Use Mission Control for their event or rooms | ✓ | ✓ | ✓ | |
+| Start and stop floor transcription in their rooms | ✓ | ✓ | ✓ | |
+| Choose the active interpreter in a booth | ✓ | ✓ | ✓ | |
+| Go live in a booth | ✓ | ✓ | ✓ | ✓ |
+| Use the booth chat | ✓ | ✓ | ✓ | ✓ |
+| View booths of their event | ✓ | ✓ | ✓ | ✓ |
 
-## Role Scopes and Boundaries
+Admins can take event actions in any event. The Admin area shows other people's events read-only; Admins change an event they don't own only when helping its owners.
 
-Permissions in Voxbento are scoped according to privilege level:
-- **`super_admin`**: Site-wide platform authority (`User.is_admin = True`), with global access across all events and settings.
-- **`event_owner`**: Event-scoped (`EventMembership`), granting administrative and configuration control across all rooms and booths within that specific event.
-- **`room_coordinator`**: Room-scoped (`RoomMembership`), conferring operational authority in Mission Control and floor source controls for assigned rooms.
-- **`interpreter` / `support`**: Booth-scoped (`BoothMembership`) or assigned across rooms/events.
+Each role can do everything the roles below it can. When a person holds several roles in the same event, for example Interpreter in one booth and Room coordinator of the room, they get the combined permissions of those roles.
 
-Cross-event permission isolation applies to event- and room-scoped assignments: an organizer or interpreter assigned to `pycon2026` has no special permissions on any other event. This design lets you safely reuse the same user accounts across multiple events without permission bleed.
+Roles are scoped: an Event owner of `pycon2026` has no special permissions in any other event, so the same account can be reused across events safely.
+
+## Apps that create events
+
+When a third-party app (for example the Eventyay plugin) creates an event for an organizer, the organizer becomes its Event owner. The app's developer gets no automatic access; the organizer can add them to the team if they want help.
 
 ## Assigning Event-Level Roles
 
@@ -63,7 +66,7 @@ Click **Manage Members** on the event detail page (`/workspace/events/{event_id}
 In the **Assign Member** form, type the registered email address of the user you want to add.
 ### Assign Role
 
-Click **Assign Role**. The user is granted `event_owner` permissions for this event and can manage its rooms and booths.
+Click **Assign Role**. The user becomes an **Event owner** of this event and can manage its rooms, booths and team.
 
 ## Assigning Room-Level Roles
 
@@ -80,10 +83,10 @@ Find the **Assigned Room Coordinators** section on the room detail page.
 Under **Assign Coordinator**, type the registered email address of the user.
   ### Select a role
 
-Choose `room_coordinator` from the dropdown.
+Choose **Room coordinator** from the dropdown.
   ### Submit
 
-Click **Assign**. When the room_coordinator logs in, they will see a link to monitor this specific room.
+Click **Assign**. When the Room coordinator signs in, **My events** links them to Mission Control for this room.
 
 ## Assigning Booth-Level Roles
 
@@ -100,7 +103,7 @@ Find the **Assigned Members** section on the booth detail page.
 Under **Assign Member**, type the registered email address of the user.
   ### Select a role
 
-Choose a role from the dropdown — typically `interpreter` for booth-level assignments.
+Choose a role from the dropdown — usually **Interpreter** for booth-level assignments.
   ### Submit
 
 Click **Assign Member**. When the interpreter logs in, they will see an **Open Booth** button on their home dashboard that links directly to this booth.
@@ -120,6 +123,6 @@ The change takes effect immediately. The user loses the associated permissions o
 The **Users** page at `/admin/users/` lists all registered accounts and exposes in-place access switches:
 
 - **Hosting access**: Allows the user to create new events and become an event owner.
-- **Admin**: Grants site-wide super administrator permissions (guarded against self-demotion or removal of the last admin).
+- **Admin**: Makes the person an Admin, the platform-wide role (guarded against self-demotion or removal of the last Admin).
 - **Active / Deactivated**: Disables login access immediately without deleting the account.
 - **Email verified**: Toggles whether the account's email has completed verification, which is required for password sign-in.
