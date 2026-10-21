@@ -28,7 +28,12 @@ depends_on = None
 
 logger = logging.getLogger("alembic.runtime.migration")
 
-MEMBERSHIP_TABLES = ("event_memberships", "room_memberships", "booth_memberships")
+# One literal statement per table, so no SQL is built from strings.
+DELETE_SUPPORT_ROWS = {
+    "event_memberships": "DELETE FROM event_memberships WHERE role = 'support'",
+    "room_memberships": "DELETE FROM room_memberships WHERE role = 'support'",
+    "booth_memberships": "DELETE FROM booth_memberships WHERE role = 'support'",
+}
 
 
 def _log(count: int, message: str, table: str) -> None:
@@ -47,9 +52,9 @@ def upgrade() -> None:
         )
         _log(result.rowcount, "Renamed %d old Event owner rows in %s", "event_memberships")
 
-    for table in MEMBERSHIP_TABLES:
+    for table, statement in DELETE_SUPPORT_ROWS.items():
         if table in existing:
-            result = conn.execute(sa.text(f"DELETE FROM {table} WHERE role = 'support'"))  # noqa: S608 - fixed table names
+            result = conn.execute(sa.text(statement))
             _log(result.rowcount, "Removed %d Support role rows from %s", table)
 
     # Invite links only give booth roles now; older links could carry any role.
