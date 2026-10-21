@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Overview{% endblock %}
 
 {% block content %}
 {% set ns = namespace(events=event_data|length, live=0, booths=0) %}
@@ -10,7 +10,7 @@
 
   <div class="hub-header">
   <div>
-    <h1>Dashboard</h1>
+    <h1>Overview</h1>
     <p>Manage your events, rooms and interpretation booths.</p>
   </div>
   {% if can_host or is_admin %}

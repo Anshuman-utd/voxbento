@@ -15,7 +15,7 @@
     {% from "_app_header.html" import app_header with context %}
     {% call app_header() %}
       {% if user_menu and user_menu.area == 'admin' %}
-        <a href="/admin/" class="{{ 'is-active' if _path == '/admin/' else '' }}">Dashboard</a>
+        <a href="/admin/" class="{{ 'is-active' if _path == '/admin/' else '' }}">Overview</a>
         <a href="/admin/hosting-access/" class="{{ 'is-active' if _path.startswith('/admin/hosting-access') else '' }}">
           Hosting access
           {% if open_hosting_requests|default(0) %}
