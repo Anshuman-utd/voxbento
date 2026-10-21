@@ -1078,6 +1078,7 @@ def test_architecture_regression_boundaries():
         "_handle_initiate_handoff",
         "_handle_accept_handoff",
         "_handle_cancel_handoff",
+        "_handle_request_publish_ticket",
     ]
     for handler_name in extracted_handlers:
         assert not hasattr(manager_mod, handler_name), f"{handler_name} still in manager.py"
@@ -1087,6 +1088,7 @@ def test_architecture_regression_boundaries():
     assert isinstance(booth_protocol, BoothProtocolCoordinator)
     assert callable(booth_protocol.dispatch)
     assert callable(booth_protocol.handle_disconnect)
+    assert callable(booth_protocol.handle_request_publish_ticket)
 
 
 @pytest.mark.anyio

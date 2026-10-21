@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from fastapi import WebSocket
 
 from portal.auth import can_perform_role
+from portal.booth_identity import booth_id_to_mediamtx_path
+from portal.booth_publish import TICKET_TTL_SECS, issue_ticket
 
 if TYPE_CHECKING:
     from portal.booth_state import BoothRegistry, Participant
@@ -58,6 +60,8 @@ class BoothProtocolCoordinator:
             await self.handle_accept_handoff(ws, session, data)
         elif msg_type == "booth:cancel-handoff":
             await self.handle_cancel_handoff(ws, session, data)
+        elif msg_type == "booth:request-publish-ticket":
+            await self.handle_request_publish_ticket(ws, session, data)
         else:
             await ws.send_text(json.dumps({"type": "booth:error", "message": f"Unknown message type: {msg_type}"}))
 
@@ -134,6 +138,7 @@ class BoothProtocolCoordinator:
                 participant_id=participant_id,
                 room_id=room_id,
                 before_broadcast=_send_joined,
+                reclaim=participant_id is not None and participant_id == session.participant_id,
             )
         except (ValueError, PermissionError) as exc:
             await ws.send_text(json.dumps({"type": "booth:error", "message": str(exc)}))
@@ -294,6 +299,32 @@ class BoothProtocolCoordinator:
         except (ValueError, PermissionError) as exc:
             await ws.send_text(json.dumps({"type": "booth:error", "message": str(exc)}))
             return
+
+    async def handle_request_publish_ticket(self, ws: WebSocket, session: Session, data: dict) -> None:
+        """Issue a single-use WHIP ticket to the active interpreter (#783).
+
+        Always answers with ``booth:publish-ticket`` so the client can match the reply
+        to its pending request; a refusal carries ``error`` instead of ``ticket``.
+        """
+        reply: dict = {"type": "booth:publish-ticket"}
+        if not session.participant_id:
+            reply["error"] = "Join the booth before going live."
+        else:
+            try:
+                await self.booths.check_publish_permission(
+                    session.booth_id, session.participant_id, session.language, session.channel_id
+                )
+                booth = self.booths.get_booth_sync(session.booth_id)
+                if booth is None or not booth.broadcast_unlocked:
+                    raise PermissionError("Broadcast is stopped by Mission Control.")
+                # Bound to the server's booth, never to the client-supplied channel_id.
+                path = booth_id_to_mediamtx_path(session.booth_id)
+            except (ValueError, PermissionError) as exc:
+                reply["error"] = str(exc)
+            else:
+                reply["ticket"] = issue_ticket(session.booth_id, session.participant_id, path)
+                reply["expires_in"] = int(TICKET_TTL_SECS)
+        await ws.send_text(json.dumps(reply))
 
 
 booth_protocol = BoothProtocolCoordinator()

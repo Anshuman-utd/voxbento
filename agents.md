@@ -167,7 +167,7 @@ Validation: `portal/booth_identity.py` — slug: `^[a-z0-9]+(?:-[a-z0-9]+)*$`; l
 | `booth:chat` | `booth_protocol.handle_chat` | `body` only |
 | `booth:set-active` | `booth_protocol.handle_set_active` | `target_id` |
 | `booth:update-state` | `booth_protocol.handle_update_state` | `mic_active`, `ingest_connected` |
-| `booth:request-publish-ticket` | `_handle_request_publish_ticket` | — (participant from the WS session) |
+| `booth:request-publish-ticket` | `booth_protocol.handle_request_publish_ticket` | — (participant from the WS session) |
 
 Server → Client: `booth:joined`, `booth:state`, `booth:chat`, `booth:error`, `booth:publish-ticket`
 
