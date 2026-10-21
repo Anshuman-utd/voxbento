@@ -760,6 +760,12 @@ async def count_open_hosting_requests(session: AsyncSession) -> int:
     return (await session.execute(stmt)).scalar_one()
 
 
+async def count_pending_developer_accounts(session: AsyncSession) -> int:
+    """Developer API applications waiting for an Admin to approve or reject them."""
+    stmt = select(func.count(DeveloperAccount.id)).where(DeveloperAccount.status == "pending")
+    return (await session.execute(stmt)).scalar_one()
+
+
 async def close_hosting_request(
     session: AsyncSession,
     hosting_request: HostingRequest,

@@ -211,12 +211,17 @@ async def resolve_request_principal(request: Request, db_session: AsyncSession) 
             "coordinated_room_ids": set(),
             "whole_event_coordinator_ids": set(),
             "open_hosting_requests": 0,
+            "pending_developer_accounts": 0,
             "has_developer_app": False,
         }
         request.state.principal = principal
         return principal
 
-    from portal.database import count_open_hosting_requests, has_approved_developer_app
+    from portal.database import (
+        count_open_hosting_requests,
+        count_pending_developer_accounts,
+        has_approved_developer_app,
+    )
 
     scope = await load_membership_scope(db_session, user.id)
 
@@ -229,6 +234,8 @@ async def resolve_request_principal(request: Request, db_session: AsyncSession) 
         **scope,
         # Shown as the count on the Admin "Hosting access" menu item.
         "open_hosting_requests": await count_open_hosting_requests(db_session) if user.is_admin else 0,
+        # Shown as the count on the Admin "Dev Accounts" menu item.
+        "pending_developer_accounts": await count_pending_developer_accounts(db_session) if user.is_admin else 0,
         # Shows "Developer API" in the user menu.
         "has_developer_app": await has_approved_developer_app(db_session, user.id),
     }

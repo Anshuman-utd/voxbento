@@ -100,10 +100,12 @@ def management_template_context(request: Request) -> dict[str, str | bool | int]
         can_host = bool(principal.get("can_host", False))
         is_admin = bool(principal.get("is_admin", False))
         open_hosting_requests = int(principal.get("open_hosting_requests", 0))
+        pending_developer_accounts = int(principal.get("pending_developer_accounts", 0))
     else:
         can_host = False
         is_admin = False
         open_hosting_requests = 0
+        pending_developer_accounts = 0
     return {
         "management_prefix": WORKSPACE_PREFIX if is_workspace else ADMIN_PREFIX,
         "management_api_prefix": "/api/workspace" if is_workspace else "/api/admin",
@@ -111,6 +113,7 @@ def management_template_context(request: Request) -> dict[str, str | bool | int]
         "can_host": can_host,
         "is_admin": is_admin,
         "open_hosting_requests": open_hosting_requests,
+        "pending_developer_accounts": pending_developer_accounts,
     }
 
 
