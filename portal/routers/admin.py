@@ -64,6 +64,7 @@ from portal.database import (
     get_event_by_id,
     get_event_by_slug,
     get_hosting_request,
+    get_invite_token,
     get_open_hosting_request,
     get_room_by_id,
     get_session,
@@ -637,6 +638,13 @@ async def admin_setup_add_booth(request: Request, event_id: int):
     language_code = form.get("language_code", "").strip().lower()
     language_name = form.get("language_name", "").strip()
     error = None
+    room = None
+    if room_id_str.isdigit():
+        async with get_session() as session:
+            room = await get_room_by_id(session, int(room_id_str))
+    if room is not None and room.event_id != event_id:
+        # Only this event's rooms; the wizard just shows the form again.
+        room_id_str = ""
     if room_id_str and language_code:
         if not language_name:
             lang = pycountry.languages.get(alpha_2=language_code)
@@ -1087,6 +1095,11 @@ async def admin_edit_room(request: Request, event_id: int, room_id: int):
                 room.audio_delay_ms = audio_delay_ms
 
             if not form_section or form_section == "relay":
+                # The relay booth must be one of this event's booths.
+                if relay_booth_id is not None:
+                    relay_booth = await get_booth_by_id(session, relay_booth_id)
+                    if relay_booth is None or relay_booth.event_id != event_id:
+                        raise HTTPException(status_code=404, detail="Relay booth not found.")
                 room.relay_booth_id = relay_booth_id
 
             if not form_section or form_section == "transcription":
@@ -1453,6 +1466,8 @@ async def admin_create_booth(request: Request, event_id: int, room_id: int):
             status_code=status.HTTP_303_SEE_OTHER,
         )
     redirect_path = f"events/{event_id}/rooms/{room_id}/booths/"
+    async with get_session() as session:
+        await room_in_event(session, event_id, room_id)
     try:
         created = await _create_booth_unless_duplicate(
             event_id=event_id,
@@ -1532,6 +1547,8 @@ async def admin_add_room_member(request: Request, event_id: int, room_id: int):
     role = form.get("role", "").strip()
     if role and assignment_error(role, "room"):
         return invalid_role_redirect(request, f"events/{event_id}/rooms/{room_id}/", role)
+    async with get_session() as session:
+        await room_in_event(session, event_id, room_id)
     if email:
         async with get_session() as session:
             user = await get_user_by_email(session, email)
@@ -1573,6 +1590,7 @@ async def admin_add_room_member(request: Request, event_id: int, room_id: int):
 )
 async def admin_invite_room_member(request: Request, event_id: int, room_id: int, membership_id: int):
     async with get_session() as session:
+        await room_in_event(session, event_id, room_id)
         memberships = await list_memberships_for_room(session, room_id)
         for m in memberships:
             if m.id == membership_id:
@@ -1615,6 +1633,8 @@ async def admin_add_booth_member(request: Request, event_id: int, room_id: int, 
     role = form.get("role", "").strip()
     if role and assignment_error(role, "booth"):
         return invalid_role_redirect(request, f"events/{event_id}/rooms/{room_id}/booths/{booth_id}/", role)
+    async with get_session() as session:
+        await booth_in_room(session, event_id, room_id, booth_id)
     if email:
         async with get_session() as session:
             user = await get_user_by_email(session, email)
@@ -1660,6 +1680,7 @@ async def admin_add_booth_member(request: Request, event_id: int, room_id: int, 
 )
 async def admin_invite_booth_member(request: Request, event_id: int, room_id: int, booth_id: int, membership_id: int):
     async with get_session() as session:
+        await booth_in_room(session, event_id, room_id, booth_id)
         memberships = await list_memberships_for_booth(session, booth_id)
         for m in memberships:
             if m.id == membership_id:
@@ -1797,7 +1818,7 @@ async def admin_transcription_settings(
 ):
     async with get_session() as session:
         db_booth = await get_booth_by_id(session, booth_id)
-        if db_booth is None or db_booth.room_id != room_id:
+        if db_booth is None or db_booth.event_id != event_id or db_booth.room_id != room_id:
             raise HTTPException(status_code=404, detail="Booth not found.")
         try:
             provider_enum = ProviderEnum(transcription_provider)
@@ -1936,6 +1957,22 @@ async def admin_users(
             "is_room_coordinator": True,
         },
     )
+
+
+async def room_in_event(session, event_id: int, room_id: int):
+    """The room in the URL, or 404 when it isn't part of the event in the URL."""
+    room = await get_room_by_id(session, room_id)
+    if room is None or room.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Room not found.")
+    return room
+
+
+async def booth_in_room(session, event_id: int, room_id: int, booth_id: int):
+    """The booth in the URL, or 404 when it isn't in that room of the event in the URL."""
+    booth = await get_booth_by_id(session, booth_id)
+    if booth is None or booth.event_id != event_id or booth.room_id != room_id:
+        raise HTTPException(status_code=404, detail="Booth not found.")
+    return booth
 
 
 def invalid_role_redirect(request: Request, path: str, role: str) -> RedirectResponse:
@@ -2729,8 +2766,9 @@ async def admin_create_token(request: Request, event_id: int, room_id: int, boot
             expires_at = utc_now() + timedelta(hours=int(expires_hours))
         except ValueError:
             pass
-    if role:
-        async with get_session() as session:
+    async with get_session() as session:
+        await booth_in_room(session, event_id, room_id, booth_id)
+        if role:
             await create_invite_token(session, booth_id=booth_id, role=role, label=label, expires_at=expires_at)
     return safe_redirect(
         url=management_url(request, f"events/{event_id}/rooms/{room_id}/booths/{booth_id}/"),
@@ -2744,6 +2782,10 @@ async def admin_create_token(request: Request, event_id: int, room_id: int, boot
 )
 async def admin_revoke_token(request: Request, event_id: int, room_id: int, booth_id: int, token_id: str):
     async with get_session() as session:
+        await booth_in_room(session, event_id, room_id, booth_id)
+        token = await get_invite_token(session, token_id)
+        if token is None or token.booth_id != booth_id:
+            raise HTTPException(status_code=404, detail="Invite link not found.")
         await revoke_invite_token(session, token_id)
     return safe_redirect(
         url=management_url(request, f"events/{event_id}/rooms/{room_id}/booths/{booth_id}/"),

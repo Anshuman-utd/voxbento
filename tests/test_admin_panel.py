@@ -1733,8 +1733,8 @@ class TestBoothCRUD:
                 cookies=admin_cookie,
                 follow_redirects=False,
             )
-        assert booths_page.status_code == 303
-        assert "duplicate_language" not in booths_page.headers["location"]
+        # A room that isn't part of the event is not found (#757), never reported as a duplicate.
+        assert booths_page.status_code == 404
         assert wizard.status_code == 303
         assert "duplicate_language" not in wizard.headers["location"]
 

@@ -47,8 +47,14 @@ _API_KEY_FIELDS: list[tuple[str, str]] = [
 ]
 
 
-async def _verify_token_rbac(db: AsyncSession, token: OAuthToken, event: Event, room_id: int | None = None) -> None:
-    """Ensure the OAuth token is valid for this event, AND the underlying user still has RBAC permissions."""
+async def _verify_token_rbac(
+    db: AsyncSession, token: OAuthToken, event: Event, room_id: int | None = None, *, manage: bool = False
+) -> None:
+    """Ensure the OAuth token is valid for this event, AND the underlying user still has RBAC permissions.
+
+    manage=True is for creating, changing or deleting rooms and booths, which only Admins and
+    Event owners may do (#757); Room coordinators pass only for live-session and read actions.
+    """
     if token.event_id != event.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
@@ -74,7 +80,7 @@ async def _verify_token_rbac(db: AsyncSession, token: OAuthToken, event: Event, 
         return
 
     # Room coordinators may be given per event, room or booth (#757); the room was checked above.
-    if room_id is not None and coordinates_room(scope, room_id, event.id):
+    if not manage and room_id is not None and coordinates_room(scope, room_id, event.id):
         return
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User lost RBAC access to this resource")
@@ -412,7 +418,7 @@ async def upsert_room(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    await _verify_token_rbac(db, token, event)
+    await _verify_token_rbac(db, token, event, manage=True)
 
     room_res = await db.execute(
         select(Room).where(Room.event_id == event.id, Room.eventyay_room_id == eventyay_room_id)
@@ -565,7 +571,7 @@ async def delete_room(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    await _verify_token_rbac(db, token, event)
+    await _verify_token_rbac(db, token, event, manage=True)
 
     room_res = await db.execute(
         select(Room).where(Room.event_id == event.id, Room.eventyay_room_id == eventyay_room_id)
@@ -611,7 +617,7 @@ async def patch_room_settings(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    await _verify_token_rbac(db, token, event, room_id)
+    await _verify_token_rbac(db, token, event, room_id, manage=True)
     return {"status": "success"}
 
 
@@ -684,7 +690,7 @@ async def create_booth(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    await _verify_token_rbac(db, token, event, room_id)
+    await _verify_token_rbac(db, token, event, room_id, manage=True)
 
     result = await db.execute(select(DBBooth).where(DBBooth.room_id == room_id, DBBooth.language_code == language_code))
     if result.scalars().first():
@@ -713,7 +719,7 @@ async def delete_booth_endpoint(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    await _verify_token_rbac(db, token, event, room_id)
+    await _verify_token_rbac(db, token, event, room_id, manage=True)
 
     result = await db.execute(select(DBBooth).where(DBBooth.room_id == room_id, DBBooth.language_code == language_code, DBBooth.event_id == event.id))
     booth = result.scalars().first()

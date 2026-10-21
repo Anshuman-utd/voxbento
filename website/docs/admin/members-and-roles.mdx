@@ -48,6 +48,8 @@ Roles are scoped: an Event owner of `pycon2026` has no special permissions in an
 
 When a third-party app (for example the Eventyay plugin) creates an event for an organizer, the organizer becomes its Event owner. The app's developer gets no automatic access; the organizer can add them to the team if they want help.
 
+When a person connects an app to an event, the app gets only what that person may do. An Event owner can allow everything. A Room coordinator (given for the event, a room or a booth) can allow reading the event and running live sessions in their rooms (`rooms:read`, `booths:read`, `sessions:manage`, `sessions:read`, `transcripts:read`, `listeners:provision`), never creating or deleting rooms or booths. The organizer becomes Event owner only when the app's server confirms the connection, not when they click **Allow**.
+
 ## Adding someone to the team
 
 Everything about an event's team happens on its **Team** page. Only the event's owners (and Admins) can open it.

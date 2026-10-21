@@ -366,3 +366,59 @@ async def test_lobby_offers_mission_control_to_a_coordinator_invited_by_link(eve
         res = await http.get("/interpreter", cookies={"session_token": token})
     assert res.status_code == 200
     assert 'href="/mission-control/summit/"' in res.text
+
+
+@pytest.mark.anyio
+async def test_owner_cannot_assign_or_invite_in_another_events_rooms_and_booths(event):
+    from portal.database import create_invite_token, get_booth_by_id
+
+    async with get_session() as s:
+        foreign_booth = await create_booth(
+            s, event_id=event["other"], room_id=event["other_room"], language_code="fr", language_name="French"
+        )
+        outsider = await make_user(s, "outsider@example.org")
+        room_row = await set_room_membership(s, user_id=outsider.id, room_id=event["other_room"], role=ROOM_COORDINATOR)
+        booth_row = await set_booth_membership(s, user_id=outsider.id, booth_id=foreign_booth.id, role=INTERPRETER)
+        token = await create_invite_token(s, booth_id=foreign_booth.id, role=INTERPRETER)
+        ids = {"booth": foreign_booth.id, "room_m": room_row.id, "booth_m": booth_row.id, "token": token.token}
+
+    own = f"/workspace/events/{event['event']}"
+    room = f"{own}/rooms/{event['other_room']}"
+    booth = f"{room}/booths/{ids['booth']}"
+    attempts = [
+        (f"{room}/members/", {"email": "new@example.org", "role": ROOM_COORDINATOR}),
+        (f"{room}/members/{ids['room_m']}/invite", {}),
+        (f"{room}/booths/", {"language_code": "es", "language_name": "Spanish"}),
+        (f"{booth}/members/", {"email": "new@example.org", "role": INTERPRETER}),
+        (f"{booth}/members/{ids['booth_m']}/invite", {}),
+        (f"{booth}/tokens/", {"role": INTERPRETER}),
+        (f"{booth}/tokens/{ids['token']}/revoke", {}),
+    ]
+    async with client() as http:
+        for path, data in attempts:
+            res = await http.post(path, data=data, headers=ORIGIN, cookies=event["owner_cookies"], follow_redirects=False)
+            assert res.status_code == 404, path
+
+    async with get_session() as s:
+        assert await get_user_by_email(s, "new@example.org") is None
+        tokens = (await s.execute(select(InviteToken).where(InviteToken.booth_id == ids["booth"]))).scalars().all()
+        assert [t.token for t in tokens] == [ids["token"]] and tokens[0].used_at is None
+        assert (await get_booth_by_id(s, ids["booth"])).room_id == event["other_room"]
+        from portal.database import list_booths_for_room
+
+        assert [b.language_code for b in await list_booths_for_room(s, event["other_room"])] == ["fr"]
+
+
+@pytest.mark.anyio
+async def test_setup_wizard_does_not_add_booths_to_another_events_room(event):
+    from portal.database import list_booths_for_room
+
+    async with client() as http:
+        res = await http.post(
+            f"/workspace/events/{event['event']}/setup/booths",
+            data={"room_id": str(event["other_room"]), "language_code": "es"},
+            headers=ORIGIN, cookies=event["owner_cookies"], follow_redirects=False,
+        )
+    assert res.status_code == 303
+    async with get_session() as s:
+        assert await list_booths_for_room(s, event["other_room"]) == []
