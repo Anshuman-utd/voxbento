@@ -201,7 +201,9 @@ def test_browser_code_uses_capabilities_not_role_names():
 
 
 def test_super_admin_is_gone_from_interface_code_and_docs():
-    places = [ROOT / "portal", ROOT / "README.md", ROOT / "website" / "docs", ROOT / "AGENTS.md", ROOT / ".agents"]
+    places = [ROOT / "portal", ROOT / "README.md", ROOT / "website" / "docs", ROOT / "agents.md", ROOT / ".agents"]
+    # A misspelled path must fail rather than silently skip the scan (paths are case-sensitive in CI).
+    assert [p for p in places if not p.exists()] == []
     pattern = re.compile(r"super[ _-]?admin", re.I)
     offenders = []
     for place in places:
@@ -276,7 +278,7 @@ async def test_retired_role_claims_are_ignored():
 # ── Migration 032: existing team members keep their roles ────────────────
 
 
-def test_migration_032_keeps_everyone_and_only_drops_support_rows(tmp_path):
+def test_migration_032_keeps_everyone_and_drops_retired_roles(tmp_path):
     import importlib.util
     import sqlite3
 
@@ -297,10 +299,12 @@ def test_migration_032_keeps_everyone_and_only_drops_support_rows(tmp_path):
         CREATE TABLE booth_memberships (id INTEGER PRIMARY KEY, user_id INT, booth_id INT, role TEXT);
         CREATE TABLE invite_tokens (id INTEGER PRIMARY KEY, booth_id INT, role TEXT);
         INSERT INTO event_memberships (user_id, event_id, role) VALUES
-            (1, 1, 'event_owner'), (2, 1, 'room_coordinator'), (3, 1, 'interpreter'), (9, 1, 'support');
+            (1, 1, 'event_owner'), (2, 1, 'room_coordinator'), (3, 1, 'interpreter'), (9, 1, 'support'),
+            (7, 2, 'owner'), (8, 2, 'super_admin');
         INSERT INTO room_memberships (user_id, room_id, role) VALUES (4, 1, 'room_coordinator');
         INSERT INTO booth_memberships (user_id, booth_id, role) VALUES (5, 1, 'interpreter'), (6, 1, 'room_coordinator');
-        INSERT INTO invite_tokens (booth_id, role) VALUES (1, 'interpreter'), (1, 'room_coordinator');
+        INSERT INTO invite_tokens (booth_id, role) VALUES
+            (1, 'interpreter'), (1, 'room_coordinator'), (1, 'event_owner'), (1, 'super_admin'), (1, 'support');
         """
     )
     conn.commit()
@@ -320,7 +324,7 @@ def test_migration_032_keeps_everyone_and_only_drops_support_rows(tmp_path):
     }
     conn.close()
     assert rows == {
-        "event_memberships": [("event_owner",), ("interpreter",), ("room_coordinator",)],
+        "event_memberships": [("event_owner",), ("event_owner",), ("event_owner",), ("interpreter",), ("room_coordinator",)],
         "room_memberships": [("room_coordinator",)],
         "booth_memberships": [("interpreter",), ("room_coordinator",)],
         "invite_tokens": [("interpreter",), ("room_coordinator",)],

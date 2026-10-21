@@ -1595,8 +1595,11 @@ async def admin_invite_room_member(request: Request, event_id: int, room_id: int
     "/admin/events/{event_id}/rooms/{room_id}/members/{membership_id}/delete", dependencies=[Depends(require_event_owner)]
 )
 async def admin_remove_room_member(request: Request, event_id: int, room_id: int, membership_id: int):
-    async with get_session() as session:
-        await remove_room_membership(session, membership_id)
+    try:
+        async with get_session() as session:
+            await remove_team_assignment(session, event_id=event_id, level="room", membership_id=membership_id)
+    except TeamError as exc:
+        return await render_team(request, event_id, error=str(exc), status_code=400)
     return safe_redirect(
         url=management_url(request, f"events/{event_id}/rooms/{room_id}/"),
         status_code=status.HTTP_303_SEE_OTHER,
@@ -1683,8 +1686,11 @@ async def admin_invite_booth_member(request: Request, event_id: int, room_id: in
     dependencies=[Depends(require_event_owner)],
 )
 async def admin_remove_booth_member(request: Request, event_id: int, room_id: int, booth_id: int, membership_id: int):
-    async with get_session() as session:
-        await remove_booth_membership(session, membership_id)
+    try:
+        async with get_session() as session:
+            await remove_team_assignment(session, event_id=event_id, level="booth", membership_id=membership_id)
+    except TeamError as exc:
+        return await render_team(request, event_id, error=str(exc), status_code=400)
     return safe_redirect(
         url=management_url(request, f"events/{event_id}/rooms/{room_id}/booths/{booth_id}/"),
         status_code=status.HTTP_303_SEE_OTHER,
@@ -1694,6 +1700,9 @@ async def admin_remove_booth_member(request: Request, event_id: int, room_id: in
 @router.post("/admin/events/{event_id}/rooms/{room_id}/booths/{booth_id}/delete", dependencies=[Depends(require_event_owner)])
 async def admin_delete_booth(request: Request, event_id: int, room_id: int, booth_id: int):
     async with get_session() as session:
+        booth = await get_booth_by_id(session, booth_id)
+        if booth is None or booth.event_id != event_id or booth.room_id != room_id:
+            raise HTTPException(status_code=404, detail="Booth not found.")
         await delete_booth(session, booth_id)
     return safe_redirect(
         url=management_url(request, f"events/{event_id}/rooms/{room_id}/booths/"),
@@ -1717,7 +1726,7 @@ async def admin_booth_translation_settings(
 ):
     async with get_session() as session:
         db_booth = await get_booth_by_id(session, booth_id)
-        if db_booth is None or db_booth.room_id != room_id:
+        if db_booth is None or db_booth.event_id != event_id or db_booth.room_id != room_id:
             raise HTTPException(status_code=404, detail="Booth not found.")
         event = await get_event_by_id(session, event_id)
         if event is None:
@@ -2542,9 +2551,12 @@ async def admin_team_add(request: Request, event_id: int):
             user, changed = await add_team_member(session, event_id=event_id, email=data["email"], role=data["role"], place=place)
             event = await get_event_by_id(session, event_id)
             if changed:
-                await _send_admin_invite(
-                    session, user, role_label(data["role"]), f"{place.label} at {event.display_name}", "/workspace/"
-                )
+                try:
+                    await _send_admin_invite(
+                        session, user, role_label(data["role"]), f"{place.label} at {event.display_name}", "/workspace/"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send team invite email to {user.email}: {e}")
     except TeamError as exc:
         return await render_team(request, event_id, error=str(exc), form=data, status_code=400)
     return team_redirect(request, event_id, "added" if changed else "already")
@@ -2581,7 +2593,12 @@ async def admin_team_resend(request: Request, event_id: int):
             return await render_team(request, event_id, error="That person is no longer on this team.", status_code=400)
         event = await get_event_by_id(session, event_id)
         first = member.assignments[0]
-        await _send_admin_invite(session, member.user, role_label(first.role), f"{first.place.label} at {event.display_name}", "/workspace/")
+        try:
+            await _send_admin_invite(
+                session, member.user, role_label(first.role), f"{first.place.label} at {event.display_name}", "/workspace/"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to resend team invite email to {member.user.email}: {e}")
     return team_redirect(request, event_id, "resent")
 
 
@@ -2686,8 +2703,11 @@ async def admin_invite_event_member(request: Request, event_id: int, membership_
 
 @router.post("/admin/events/{event_id}/members/{membership_id}/delete", dependencies=[Depends(require_event_owner)])
 async def admin_remove_event_member(request: Request, event_id: int, membership_id: int):
-    async with get_session() as session:
-        await remove_event_membership(session, membership_id)
+    try:
+        async with get_session() as session:
+            await remove_team_assignment(session, event_id=event_id, level="event", membership_id=membership_id)
+    except TeamError as exc:
+        return await render_team(request, event_id, error=str(exc), status_code=400)
     return safe_redirect(
         url=management_url(request, f"events/{event_id}/members/"), status_code=status.HTTP_303_SEE_OTHER
     )

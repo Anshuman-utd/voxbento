@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from portal.auth import require_oauth_scope
+from portal.auth import coordinates_room, load_membership_scope, require_oauth_scope
 from portal.booth_identity import make_booth_id, make_mediamtx_path, validate_language_code
 from portal.database import get_db_session
 from portal.globals import booths
@@ -20,11 +20,10 @@ from portal.models import (
     OAuthClient,
     OAuthToken,
     Room,
-    RoomMembership,
     RoomTranslationLanguage,
 )
 from portal.rate_limit import auth_rate_limiter
-from portal.roles import EVENT_OWNER, ROOM_COORDINATOR
+from portal.roles import EVENT_OWNER
 from portal.transcription.constants import ProviderEnum
 from portal.transcription.worker import active_workers, start_transcription_worker, stop_transcription_worker
 
@@ -70,28 +69,13 @@ async def _verify_token_rbac(db: AsyncSession, token: OAuthToken, event: Event, 
     if user and getattr(user, "is_admin", False):
         return
 
-    # Check Event Owner
-    evt_mem = await db.execute(
-        select(EventMembership).where(
-            EventMembership.user_id == token.user_id,
-            EventMembership.event_id == event.id,
-            EventMembership.role == EVENT_OWNER,
-        )
-    )
-    if evt_mem.scalars().first():
+    scope = await load_membership_scope(db, token.user_id)
+    if event.id in scope["owned_event_ids"]:
         return
 
-    # Check Room Coordinator if room is specified
-    if room_id is not None:
-        rm_mem = await db.execute(
-            select(RoomMembership).where(
-                RoomMembership.user_id == token.user_id,
-                RoomMembership.room_id == room_id,
-                RoomMembership.role == ROOM_COORDINATOR,
-            )
-        )
-        if rm_mem.scalars().first():
-            return
+    # Room coordinators may be given per event, room or booth (#757); the room was checked above.
+    if room_id is not None and coordinates_room(scope, room_id, event.id):
+        return
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User lost RBAC access to this resource")
 

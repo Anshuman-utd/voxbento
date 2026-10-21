@@ -56,7 +56,6 @@ async def interpreter_landing_page(request: Request) -> Any:
                         "event_slug": bm.booth.event.slug,
                         "language_code": bm.booth.language_code,
                         "role": bm.role,
-                        "can_coordinate": can_set_active(bm.role),
                     }
         except ValueError:
             pass
@@ -100,6 +99,9 @@ async def interpreter_landing_page(request: Request) -> Any:
                 "role": invite_role,
             }
 
+    # Decided after membership and invite roles are merged, so the Mission Control link follows the final role.
+    for booth in booths_by_id.values():
+        booth["can_coordinate"] = can_set_active(booth["role"])
     my_booths = list(booths_by_id.values())
     return templates.TemplateResponse(
         request=request, name="interpreter_landing.html", context={"my_booths": my_booths, "js_version": _JS_CACHE_BUST}

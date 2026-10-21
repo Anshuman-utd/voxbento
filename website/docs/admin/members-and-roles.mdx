@@ -48,75 +48,41 @@ Roles are scoped: an Event owner of `pycon2026` has no special permissions in an
 
 When a third-party app (for example the Eventyay plugin) creates an event for an organizer, the organizer becomes its Event owner. The app's developer gets no automatic access; the organizer can add them to the team if they want help.
 
-## Assigning Event-Level Roles
+## Adding someone to the team
 
-Use event-level role assignment when a user needs co-ownership of an entire event.
+Everything about an event's team happens on its **Team** page. Only the event's owners (and Admins) can open it.
 
-### Open the admin or workspace panel
+### Open the Team page
 
-Sign in at `/login` and navigate to your event.
-### Open the event
+Sign in at `/login`, open the event from **My events** and click **Team** (`/workspace/events/{event_id}/team/`).
 
-Click the event you want to manage.
-### Go to Manage Members
+### Enter their email
 
-Click **Manage Members** on the event detail page (`/workspace/events/{event_id}/members/` or `/admin/...`).
-### Enter the user's email
+Under **Add someone**, type the person's email address. They don't need an account yet; VoxBento creates one and emails them a link to sign in.
 
-In the **Assign Member** form, type the registered email address of the user you want to add.
-### Assign Role
+### Choose a Role and Where
 
-Click **Assign Role**. The user becomes an **Event owner** of this event and can manage its rooms, booths and team.
+Pick a **Role**. The text under the form explains what it can do. Then choose **Where** it applies: the whole event, one room or one booth. The list only offers places that role can be given (see the table above).
 
-## Assigning Room-Level Roles
+### Click Add to team
 
-For users who manage handoffs and oversee operations across multiple language channels in a single physical room, assign them at the room level.
+The person appears under **People** with their role. Someone who hasn't signed in yet is marked **Hasn't signed in yet**, with a **Resend invitation** button.
 
-### Navigate to the room
+A person can hold one role per place and several roles across the event, for example Room coordinator of Main Hall and Interpreter in the Room 2 · Chinese booth. Giving someone a different role at a place where they already have one replaces it.
 
-From the admin panel, go to your event → **Rooms** → open the target room.
-  ### Scroll to Assigned Room Coordinators
+## Invite links
 
-Find the **Assigned Room Coordinators** section on the room detail page.
-  ### Enter the user's email
+A booth invite link lets someone join one booth without an account. Create it under **Invite links** on the Team page by choosing the booth, the role (Interpreter or Room coordinator), an optional label and an optional expiry in hours. Anyone with the link can use it, so send it only to the person it is for and **Revoke** it when it is no longer needed.
 
-Under **Assign Coordinator**, type the registered email address of the user.
-  ### Select a role
+## Removing a role
 
-Choose **Room coordinator** from the dropdown.
-  ### Submit
+1. Open the event's **Team** page.
+2. Find the person under **People**. Use the search box or the role filters if the team is large.
+3. Click **×** on the role you want to remove and confirm.
 
-Click **Assign**. When the Room coordinator signs in, **My events** links them to Mission Control for this room.
+Only that role is removed; the person keeps any other roles in the event. An event always keeps at least one Event owner, so add another owner before removing the last one.
 
-## Assigning Booth-Level Roles
-
-For stricter access control, you can assign a user to a specific booth rather than the whole event. This is useful when an interpreter should only access one language channel and should not see other booths.
-
-### Navigate to the booth
-
-From the admin panel, go to your event → **Rooms** → select a room → **Booths** → open the target booth.
-  ### Scroll to Assigned Members
-
-Find the **Assigned Members** section on the booth detail page.
-  ### Enter the user's email
-
-Under **Assign Member**, type the registered email address of the user.
-  ### Select a role
-
-Choose a role from the dropdown — usually **Interpreter** for booth-level assignments.
-  ### Submit
-
-Click **Assign Member**. When the interpreter logs in, they will see an **Open Booth** button on their home dashboard that links directly to this booth.
-
-## Removing a Role
-
-To remove a role from a user at either the event or booth level:
-
-1. Open the **Members** section of the relevant event or booth.
-2. Find the user in the list.
-3. Click **Remove** next to their name.
-
-The change takes effect immediately. The user loses the associated permissions on their next action or page load.
+The change takes effect immediately. The person loses the associated permissions on their next action or page load.
 
 ## User Admin Flags
 

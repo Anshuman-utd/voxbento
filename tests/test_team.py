@@ -303,3 +303,66 @@ async def test_cannot_revoke_links_of_another_event(event):
     assert res.status_code == 400
     async with get_session() as s:
         assert (await s.get(InviteToken, value)).used_at is None
+
+
+# ── Legacy handlers stay inside the event they name ──────────────────────
+
+
+@pytest.mark.anyio
+async def test_owner_cannot_delete_a_booth_of_another_event(event):
+    from portal.database import get_booth_by_id
+
+    async with get_session() as s:
+        foreign = await create_booth(
+            s, event_id=event["other"], room_id=event["other_room"], language_code="fr", language_name="French"
+        )
+        foreign_id = foreign.id
+    async with client() as http:
+        res = await http.post(
+            f"/workspace/events/{event['event']}/rooms/{event['other_room']}/booths/{foreign_id}/delete",
+            headers=ORIGIN, cookies=event["owner_cookies"], follow_redirects=False,
+        )
+    assert res.status_code == 404
+    async with get_session() as s:
+        assert await get_booth_by_id(s, foreign_id) is not None
+
+
+@pytest.mark.anyio
+async def test_legacy_member_removal_checks_the_event_and_keeps_the_last_owner(event):
+    async with get_session() as s:
+        outsider = await make_user(s, "outsider@example.org")
+        foreign = await set_event_membership(s, user_id=outsider.id, event_id=event["other"], role=EVENT_OWNER)
+        foreign_id = foreign.id
+        owner_row = await s.scalar(select(EventMembership).where(EventMembership.user_id == event["owner"]))
+        owner_row_id = owner_row.id
+    async with client() as http:
+        cross = await http.post(
+            f"/workspace/events/{event['event']}/members/{foreign_id}/delete",
+            headers=ORIGIN, cookies=event["owner_cookies"], follow_redirects=False,
+        )
+        last = await http.post(
+            f"/workspace/events/{event['event']}/members/{owner_row_id}/delete",
+            headers=ORIGIN, cookies=event["owner_cookies"], follow_redirects=False,
+        )
+    assert cross.status_code == 400
+    assert last.status_code == 400
+    assert "at least one Event owner" in last.text
+    async with get_session() as s:
+        assert await s.get(EventMembership, foreign_id) is not None
+        assert await s.get(EventMembership, owner_row_id) is not None
+
+
+# ── Interpreter lobby ────────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_lobby_offers_mission_control_to_a_coordinator_invited_by_link(event):
+    from portal.auth import create_participant_token
+
+    token = create_participant_token(
+        booth_id=event["booth"], role=ROOM_COORDINATOR, event_slug="summit", room_id=event["room"], language_code="de"
+    )
+    async with client() as http:
+        res = await http.get("/interpreter", cookies={"session_token": token})
+    assert res.status_code == 200
+    assert 'href="/mission-control/summit/"' in res.text
