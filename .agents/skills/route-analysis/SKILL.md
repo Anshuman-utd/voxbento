@@ -20,7 +20,7 @@ description: Use this skill to analyse, audit, or modify HTTP and WebSocket rout
 | `/join/*` | Invite redemption | None (token in path) |
 | `/register`, `/login`, `/logout`, `/account` | User auth | None / `user_token` |
 | `/api/*` | REST API | Optional Bearer JWT or `?token=` |
-| `/admin/*` | Admin panel | `admin_token` or `user_token` with `is_admin` |
+| `/admin/*` | Admin panel | `user_token` with `is_admin` or appropriate scoped membership |
 | `/ws/booth/*` | WebSocket coordination | Cookies + optional `?token=` |
 | `/ws/captions/*` | Caption WebSocket | None |
 | `/static/*` | Static assets | None |
@@ -42,7 +42,7 @@ granted_role = await resolve_booth_role(payload, booth_id)
 ```python
 @app.get('/admin/...', dependencies=[Depends(require_admin)])
 ```
-`require_admin` checks `user_token` (is_admin=True or event_admin membership) then falls back to `admin_token`.
+`require_admin` checks `user_token` for `is_admin=True` or the appropriate scoped membership.
 
 ### API routes (optional auth)
 ```python
@@ -61,12 +61,12 @@ _require_access(credentials, token)   # passes if booth_access_token is unset
 
 `resolve_booth_role(payload, booth_id)` returns the most privileged applicable role:
 
-1. `super_admin` — if `is_admin=True` in user token.
-2. `event_admin` — if user has `EventMembership.role == 'event_admin'` for the booth's event.
-3. Role from `BoothMembership` for the specific booth.
+1. `admin` — if the signed-in account is an active Admin (`users.is_admin`, read from the database, not the token).
+2. Role from `BoothMembership` for the specific booth.
+3. Role from `RoomMembership` for the booth's room.
 4. Role from `EventMembership` for the booth's event.
-5. Role embedded in participant `session_token` — but only if `event_slug + language_code` match.
-6. Returns `None` if no applicable role found → 403 on page routes.
+5. Role embedded in participant `session_token` — but only if `event_slug`, room and `language_code` match.
+6. The highest of these wins (`portal.roles.highest_role`); `None` if none applies → 403 on page routes.
 
 ---
 

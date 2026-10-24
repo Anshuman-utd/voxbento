@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Sign In — Voxbento{% endblock %}
+{% block title %}Sign in — Voxbento{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/auth.css') }}" />
@@ -20,12 +20,20 @@
 
     <div id="alert-container" class="alert alert-error hidden"></div>
     <div id="success-container" class="alert alert-success hidden"></div>
+    <div id="waiting-container" class="alert alert-success login-waiting hidden" role="status">
+      <p class="login-waiting-title">We've emailed you a sign-in link.</p>
+      <p class="login-waiting-text">
+        Open it in this browser and this page continues on its own. If you open it on another
+        device or browser, you'll be signed in there instead.
+        <a href="#" id="request-new-link">Request a new link</a>
+      </p>
+    </div>
 
     <!-- Step 1: Email Only -->
     <form id="email-form" class="login-form">
       <input type="hidden" id="next_url" value="{{ next_url|default('', true) }}" />
       <label for="email">Email</label>
-      <input type="email" id="email" name="email" placeholder="you@example.com" value="{{ email|default('', true) }}" required autofocus />
+      <input type="email" id="email" name="email" placeholder="you@example.com" value="{{ email or prefill_email or '' }}" required autofocus />
       <button type="submit" id="continue-btn" class="btn btn-primary">Continue</button>
     </form>
 
@@ -39,7 +47,7 @@
         <input type="hidden" name="next_url" value="{{ next_url|default('', true) }}" />
         <label for="password">Password</label>
         <input type="password" id="password" name="password" placeholder="Enter your password" required />
-        <button type="submit" class="btn btn-primary">Sign In</button>
+        <button type="submit" class="btn btn-primary">Sign in</button>
         <div class="login-forgot-row">
           <button type="button" id="forgot-password-link" class="login-forgot-link">Forgot password?</button>
         </div>
@@ -52,141 +60,12 @@
     </div>
 
     <div class="login-footer">
-      <span>Don't have an account? <a href="/register">Register</a></span>
+      <span>Don't have an account? <a id="register-link" href="/register">Register</a></span>
       <a href="/">← Back to Portal Home</a>
     </div>
   </div>
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const emailForm = document.getElementById("email-form");
-  const emailInput = document.getElementById("email");
-  const continueBtn = document.getElementById("continue-btn");
-  
-  const loginMethods = document.getElementById("login-methods");
-  const passwordForm = document.getElementById("password-form");
-  const magicDivider = document.getElementById("magic-divider");
-  const magicLinkBtn = document.getElementById("magic-link-btn");
-  const passEmailInput = document.getElementById("pass_email");
-  const userEmailDisplay = document.getElementById("user-email-display");
-  const alertContainer = document.getElementById("alert-container");
-  const successContainer = document.getElementById("success-container");
-  const forgotPasswordLink = document.getElementById("forgot-password-link");
+<script type="module" src="{{ url_for('static', path='js/login.js') }}?v={{ asset_version }}"></script>
 
-  let currentEmail = "";
-
-  function showError(msg) {
-    alertContainer.textContent = msg;
-    alertContainer.classList.remove("hidden");
-  }
-
-  function showSuccess(msg) {
-    successContainer.textContent = msg;
-    successContainer.classList.remove("hidden");
-    alertContainer.classList.add("hidden");
-  }
-
-  emailForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    currentEmail = emailInput.value.trim();
-    if (!currentEmail) return;
-
-    continueBtn.disabled = true;
-    continueBtn.textContent = "Checking...";
-    alertContainer.classList.add("hidden");
-
-    try {
-      const res = await fetch("/api/auth/check-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: currentEmail })
-      });
-      const data = await res.json();
-      
-      if (!res.ok) {
-        showError(data.detail || "An error occurred");
-        continueBtn.disabled = false;
-        continueBtn.textContent = "Continue";
-        return;
-      }
-
-      if (!data.exists) {
-        // Redirect to register
-        window.location.href = `/register?email=${encodeURIComponent(currentEmail)}`;
-        return;
-      }
-
-      // User exists, show login methods
-      emailForm.classList.add("hidden");
-      loginMethods.classList.remove("hidden");
-      userEmailDisplay.textContent = currentEmail;
-      passEmailInput.value = currentEmail;
-
-      if (data.has_password) {
-        passwordForm.classList.remove("hidden");
-        magicDivider.classList.remove("hidden");
-        document.getElementById("password").focus();
-      }
-
-    } catch (err) {
-      showError("Failed to connect to server");
-      continueBtn.disabled = false;
-      continueBtn.textContent = "Continue";
-    }
-  });
-
-  magicLinkBtn.addEventListener("click", async () => {
-    magicLinkBtn.disabled = true;
-    magicLinkBtn.textContent = "Sending...";
-    alertContainer.classList.add("hidden");
-
-    try {
-      const res = await fetch("/api/auth/magic-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: currentEmail })
-      });
-      
-      if (res.ok) {
-        passwordForm.classList.add("hidden");
-        magicDivider.classList.add("hidden");
-        magicLinkBtn.classList.add("hidden");
-        showSuccess("We've sent a magic link to your email. Please check your inbox.");
-      } else {
-        const data = await res.json();
-        showError(data.detail || "Failed to send magic link");
-        magicLinkBtn.disabled = false;
-        magicLinkBtn.textContent = "Email me a magic link";
-      }
-    } catch (err) {
-      showError("Failed to connect to server");
-      magicLinkBtn.disabled = false;
-      magicLinkBtn.textContent = "Email me a magic link";
-    }
-  });
-
-  forgotPasswordLink.addEventListener("click", async (e) => {
-    e.preventDefault();
-    alertContainer.classList.add("hidden");
-    successContainer.classList.add("hidden");
-    
-    try {
-      const res = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: currentEmail })
-      });
-      
-      if (res.ok) {
-        showSuccess("If you have an account with a password, a reset link has been sent.");
-      } else {
-        showError("Failed to request password reset. Too many requests?");
-      }
-    } catch (err) {
-      showError("Failed to connect to server");
-    }
-  });
-});
-</script>
 {% endblock %}

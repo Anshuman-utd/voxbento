@@ -11,6 +11,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Custom CSS for animations and overrides -->
+    <link rel="stylesheet" href="{{ url_for('static', path='css/tokens.css') }}?v={{ js_version }}" />
     <link rel="stylesheet" href="{{ url_for('static', path='css/fonts.css') }}?v={{ js_version }}" />
     <link rel="stylesheet" href="{{ url_for('static', path='css/landing.css') }}?v={{ js_version }}" />
     <link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}?v={{ js_version }}" />
@@ -122,7 +123,7 @@
                 </a>
                 {% else %}
                 <a href="/login" class="brutal-btn brutal-btn-outline !px-3 !py-2 text-xs">
-                    Sign In
+                    Sign in
                 </a>
                 {% endif %}
             </div>
@@ -541,6 +542,7 @@
                 });
         })();
     </script>
+    {% include "_auth_sync.html" %}
 </body>
 
 </html>

@@ -242,65 +242,42 @@ class TestLoginRateLimiting:
 
 
 # ---------------------------------------------------------------------------
-# POST /admin/login Rate Limiting
+# Admin Sign-in & /admin/login Redirection
 # ---------------------------------------------------------------------------
 
 
 class TestAdminLoginRateLimiting:
     @pytest.mark.anyio
-    async def test_admin_login_throttles_after_limit_exceeded(self):
-        settings.rate_limit_admin_login = "3/minute"
-        limiter.reset()
-
-        async with _client(client_ip="192.168.1.30") as client:
-            for _ in range(3):
-                resp = await client.post(
-                    "/admin/login",
-                    data={"password": "wrong-admin-pass"},
-                    follow_redirects=False,
-                )
-                assert resp.status_code == 403
-
-            resp = await client.post(
-                "/admin/login",
-                data={"password": "test-admin-pass"},
-                follow_redirects=False,
-            )
-            assert resp.status_code == 429
-            assert "retry-after" in resp.headers
-
-    @pytest.mark.anyio
-    async def test_admin_login_rate_limit_isolated_by_ip(self):
-        settings.rate_limit_admin_login = "2/minute"
-        limiter.reset()
-
-        ip1 = "10.9.9.1"
-        ip2 = "10.9.9.2"
-
-        async with _client(client_ip=ip1) as c1, _client(client_ip=ip2) as c2:
-            await c1.post("/admin/login", data={"password": "wrong"})
-            await c1.post("/admin/login", data={"password": "wrong"})
-            blocked_c1 = await c1.post("/admin/login", data={"password": "test-admin-pass"})
-            assert blocked_c1.status_code == 429
-
-            allowed_c2 = await c2.post(
-                "/admin/login",
-                data={"password": "test-admin-pass"},
-                follow_redirects=False,
-            )
-            assert allowed_c2.status_code == 303
-            assert allowed_c2.headers["location"] == "/admin/"
-
-    @pytest.mark.anyio
-    async def test_get_admin_login_page_is_not_rate_limited(self):
-        settings.rate_limit_admin_login = "2/minute"
+    async def test_get_admin_login_redirects_without_rate_limit(self):
+        settings.rate_limit_login = "2/minute"
         limiter.reset()
 
         async with _client(client_ip="10.9.9.5") as client:
             for _ in range(5):
-                resp = await client.get("/admin/login")
-                assert resp.status_code == 200
-                assert b"Admin" in resp.content
+                resp = await client.get("/admin/login", follow_redirects=False)
+                assert resp.status_code == 303
+                assert resp.headers["location"] == "/login?next=/admin/"
+
+    @pytest.mark.anyio
+    async def test_post_admin_login_is_retired_and_returns_405(self):
+        async with _client(client_ip="192.168.1.30") as client:
+            resp = await client.post(
+                "/admin/login",
+                data={"password": "wrong-admin-pass"},
+                follow_redirects=False,
+            )
+            assert resp.status_code == 405
+
+    @pytest.mark.anyio
+    async def test_admin_signin_through_login_endpoint_is_rate_limited(self):
+        settings.rate_limit_login = "2/minute"
+        limiter.reset()
+
+        async with _client(client_ip="10.9.9.1") as client:
+            await client.post("/login", data={"email": "admin@example.com", "password": "wrong"})
+            await client.post("/login", data={"email": "admin@example.com", "password": "wrong"})
+            blocked = await client.post("/login", data={"email": "admin@example.com", "password": "wrong"})
+            assert blocked.status_code == 429
 
 
 # ---------------------------------------------------------------------------
@@ -360,15 +337,28 @@ class TestRateLimitResponsesAndHeaders:
     @pytest.mark.anyio
     async def test_all_auth_endpoints_expose_ratelimit_headers_on_429(self):
         settings.rate_limit_register = "1/minute"
-        settings.rate_limit_admin_login = "1/minute"
+        settings.rate_limit_login = "1/minute"
         limiter.reset()
 
         # Test POST /register headers
         async with _client(client_ip="10.8.8.3") as client:
-            await client.post("/register", data={"email": "u@b.com", "display_name": "U", "password": "pw"})
+            await client.post(
+                "/register",
+                data={
+                    "email": "u@b.com",
+                    "display_name": "U",
+                    "password": "validpassword123",
+                    "password_confirm": "validpassword123",
+                },
+            )
             resp_reg = await client.post(
                 "/register",
-                data={"email": "u@b.com", "display_name": "U", "password": "pw"},
+                data={
+                    "email": "u@b.com",
+                    "display_name": "U",
+                    "password": "validpassword123",
+                    "password_confirm": "validpassword123",
+                },
                 headers={"accept": "application/json"},
             )
             assert resp_reg.status_code == 429
@@ -377,19 +367,19 @@ class TestRateLimitResponsesAndHeaders:
             assert resp_reg.headers.get("x-ratelimit-remaining") == "0"
             assert float(resp_reg.headers["x-ratelimit-reset"]) > 0
 
-        # Test POST /admin/login headers
+        # Test POST /login headers
         async with _client(client_ip="10.8.8.4") as client:
-            await client.post("/admin/login", data={"password": "wrong"})
-            resp_admin = await client.post(
-                "/admin/login",
-                data={"password": "wrong"},
+            await client.post("/login", data={"email": "u@b.com", "password": "wrong"})
+            resp_login = await client.post(
+                "/login",
+                data={"email": "u@b.com", "password": "wrong"},
                 headers={"accept": "application/json"},
             )
-            assert resp_admin.status_code == 429
-            assert int(resp_admin.headers["retry-after"]) > 0
-            assert resp_admin.headers.get("x-ratelimit-limit") == "1"
-            assert resp_admin.headers.get("x-ratelimit-remaining") == "0"
-            assert float(resp_admin.headers["x-ratelimit-reset"]) > 0
+            assert resp_login.status_code == 429
+            assert int(resp_login.headers["retry-after"]) > 0
+            assert resp_login.headers.get("x-ratelimit-limit") == "1"
+            assert resp_login.headers.get("x-ratelimit-remaining") == "0"
+            assert float(resp_login.headers["x-ratelimit-reset"]) > 0
 
     @pytest.mark.anyio
     async def test_spoofed_forwarded_headers_are_ignored(self):
@@ -940,13 +930,12 @@ class TestProxyHeadersMiddlewareAndRateLimiting:
             assert r3.status_code == 403
 
     @pytest.mark.anyio
-    async def test_register_and_admin_login_rate_limiting_with_proxy_middleware(self):
-        """Verify POST /register and POST /admin/login rate limits work correctly through
-
+    async def test_register_and_login_rate_limiting_with_proxy_middleware(self):
+        """Verify POST /register and POST /login rate limits work correctly through
         the ProxyHeadersMiddleware boundary.
         """
         settings.rate_limit_register = "1/minute"
-        settings.rate_limit_admin_login = "1/minute"
+        settings.rate_limit_login = "1/minute"
         limiter.reset()
 
         gateway_ip = "172.28.0.1"
@@ -958,8 +947,8 @@ class TestProxyHeadersMiddlewareAndRateLimiting:
                 data={
                     "email": "reg1@example.com",
                     "display_name": "R1",
-                    "password": "pw",
-                    "password_confirm": "pw",
+                    "password": "validpassword123",
+                    "password_confirm": "validpassword123",
                 },
                 headers={"x-forwarded-for": "203.0.113.1"},
             )
@@ -972,8 +961,8 @@ class TestProxyHeadersMiddlewareAndRateLimiting:
                 data={
                     "email": "reg2@example.com",
                     "display_name": "R2",
-                    "password": "pw",
-                    "password_confirm": "pw",
+                    "password": "validpassword123",
+                    "password_confirm": "validpassword123",
                 },
                 headers={"x-forwarded-for": "203.0.113.1"},
             )
@@ -985,39 +974,39 @@ class TestProxyHeadersMiddlewareAndRateLimiting:
                 data={
                     "email": "reg3@example.com",
                     "display_name": "R3",
-                    "password": "pw",
-                    "password_confirm": "pw",
+                    "password": "validpassword123",
+                    "password_confirm": "validpassword123",
                 },
                 headers={"x-forwarded-for": "203.0.113.2"},
             )
             assert r_reg3.status_code in (200, 303)
             assert r_reg3.status_code != 429
 
-            # /admin/login for client 3
-            r_adm1 = await client.post(
-                "/admin/login",
-                data={"password": "bad"},
+            # /login for client 3
+            r_log1 = await client.post(
+                "/login",
+                data={"email": "u3@example.com", "password": "wrong"},
                 headers={"x-forwarded-for": "203.0.113.3"},
             )
-            assert r_adm1.status_code == 403
-            assert r_adm1.status_code != 429
+            assert r_log1.status_code == 403
+            assert r_log1.status_code != 429
 
-            # /admin/login for client 3 second time -> 429
-            r_adm2 = await client.post(
-                "/admin/login",
-                data={"password": "bad"},
+            # /login for client 3 second time -> 429
+            r_log2 = await client.post(
+                "/login",
+                data={"email": "u3@example.com", "password": "wrong"},
                 headers={"x-forwarded-for": "203.0.113.3"},
             )
-            assert r_adm2.status_code == 429
+            assert r_log2.status_code == 429
 
-            # /admin/login for client 4 -> 403 (independent bucket, not 429)
-            r_adm3 = await client.post(
-                "/admin/login",
-                data={"password": "bad"},
+            # /login for client 4 -> independent bucket, not 429
+            r_log3 = await client.post(
+                "/login",
+                data={"email": "u4@example.com", "password": "wrong"},
                 headers={"x-forwarded-for": "203.0.113.4"},
             )
-            assert r_adm3.status_code == 403
-            assert r_adm3.status_code != 429
+            assert r_log3.status_code == 403
+            assert r_log3.status_code != 429
 
     @pytest.mark.anyio
     async def test_forwarded_allow_ips_wildcard_rejected_by_settings(self):

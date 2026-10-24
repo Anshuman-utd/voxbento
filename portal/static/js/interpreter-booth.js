@@ -60,6 +60,7 @@ const elements = {
   toggleMic: document.getElementById('toggle-mic'),
   handoverBtn: document.getElementById('handover-btn'),
   handoverLabel: document.getElementById('handover-label'),
+  handoverAnnouncer: document.getElementById('handover-announcer'),
   liveBadge: document.getElementById('live-badge'),
   liveBadgeText: document.getElementById('live-badge-text'),
   passRelay: document.getElementById('pass-relay'),
@@ -206,6 +207,8 @@ function handleServerMessage(data) {
     joinMonitoringFeed()
     render()
     showError('')
+  } else if (type === 'booth:publish-ticket') {
+    settlePublishTicket(data)
   } else if (type === 'booth:state') {
     applyBoothState(data.state)
     render()
@@ -599,7 +602,7 @@ function setBoothVolume(pct) {
 
 function joinBooth() {
   const displayName = portal.dataset.displayName || 'Interpreter'
-  const requestedRole = state.grantedRole || 'interpreter'
+  const requestedRole = state.grantedRole
 
   const rawRoomId = portal.dataset.roomId
   const parsedRoomId =
@@ -1048,11 +1051,48 @@ async function toggleMicMute() {
 
 // ── Ingest helpers ────────────────────────────────────────────────────────────
 
+// MediaMTX only accepts a booth publish carrying a single-use ticket that the
+// server issues to the active interpreter over the booth WebSocket (#783).
+const PUBLISH_TICKET_TIMEOUT_MS = 5000
+let pendingPublishTicket = null
+
+/** Ask the server for a single-use WHIP ticket; resolves with the ticket string. */
+function requestPublishTicket() {
+  return new Promise((resolve, reject) => {
+    if (pendingPublishTicket) {
+      clearTimeout(pendingPublishTicket.timer)
+      pendingPublishTicket.reject(new Error('Publish ticket request superseded'))
+    }
+    const timer = window.setTimeout(() => {
+      pendingPublishTicket = null
+      reject(new Error('Timed out waiting for a publish ticket'))
+    }, PUBLISH_TICKET_TIMEOUT_MS)
+    pendingPublishTicket = { resolve, reject, timer }
+    if (!wsSend({ type: 'booth:request-publish-ticket' })) {
+      clearTimeout(timer)
+      pendingPublishTicket = null
+      reject(new Error('Not connected to server'))
+    }
+  })
+}
+
+/** Resolve or reject the pending ticket request from a `booth:publish-ticket` reply. */
+function settlePublishTicket(data) {
+  if (!pendingPublishTicket) return
+  const { resolve, reject, timer } = pendingPublishTicket
+  pendingPublishTicket = null
+  clearTimeout(timer)
+  if (data.ticket) resolve(data.ticket)
+  else reject(new Error(data.error || 'Publish ticket refused'))
+}
+
+/** POST the local SDP offer to MediaMTX with a fresh publish ticket and apply the answer. */
 async function doWhipIngest(peerConnection) {
   const whipUrl = `${state.whipBase}/${encodeURIComponent(state.channelId)}/whip`
+  const ticket = await requestPublishTicket()
   const response = await fetch(whipUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/sdp' },
+    headers: { 'Content-Type': 'application/sdp', Authorization: `Bearer ${ticket}` },
     body: peerConnection.localDescription.sdp,
   })
   if (!response.ok) {
@@ -1116,17 +1156,7 @@ async function startLiveIngest() {
 
     state.ingestConnected = true
     
-    // Start backend transcription
-    try {
-      const payload = { event_slug: portal.dataset.eventSlug, language_code: portal.dataset.languageCode }
-      await fetch(`/api/events/${portal.dataset.eventSlug}/rooms/${portal.dataset.roomId}/booths/${portal.dataset.languageCode}/transcription/start`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${portal.dataset.boothToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-    } catch (err) {
-      console.warn('Failed to start transcription worker:', err)
-    }
+    await startTranscription()
     wsSend({
       type: 'booth:update-state',
       mic_active: !state.micMuted,
@@ -1138,6 +1168,17 @@ async function startLiveIngest() {
     await stopLiveIngest()
   }
   renderMicControls()
+}
+
+async function startTranscription() {
+  try {
+    const response = await fetch(`/api/events/${portal.dataset.eventSlug}/rooms/${portal.dataset.roomId}/booths/${portal.dataset.languageCode}/transcription/start`, { method: 'POST', headers: authHeaders() })
+    if (!response.ok) {
+      console.warn('Failed to start transcription worker:', response.status)
+    }
+  } catch (err) {
+    console.warn('Failed to start transcription worker:', err)
+  }
 }
 
 async function stopLiveIngest() {
@@ -1220,18 +1261,7 @@ function attemptRelayStart(attempt) {
       state.ingestStarting = false
       // Start backend transcription worker now that WHIP ingest is live
       if (portal.dataset.eventSlug && portal.dataset.languageCode) {
-        try {
-          await fetch(`/api/events/${portal.dataset.eventSlug}/rooms/${portal.dataset.roomId}/booths/${portal.dataset.languageCode}/transcription/start`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${portal.dataset.boothToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              event_slug: portal.dataset.eventSlug,
-              language_code: portal.dataset.languageCode,
-            }),
-          })
-        } catch (err) {
-          console.warn('Failed to start transcription worker:', err)
-        }
+        await startTranscription()
       }
 
       wsSend({ type: 'booth:update-state', mic_active: !state.micMuted, ingest_connected: true })
@@ -1281,11 +1311,10 @@ function render() {
  * Show/hide controls that are not available to the current role.
  */
 function renderRoleControls() {
-  const role = state.grantedRole
-  if (!role) return
+  if (!state.grantedRole) return
 
-  const isListener = role === 'listener'
-  const canGo = !isListener
+  // What the role allows comes from the server (portal/roles.py), not from role names here.
+  const canGo = portal.dataset.canGoLive === 'true'
 
   if (elements.handoverBtn) elements.handoverBtn.style.display = canGo ? '' : 'none'
   if (elements.toggleMic) elements.toggleMic.style.display = canGo ? '' : 'none'
@@ -1295,7 +1324,7 @@ function renderRoleControls() {
 function renderParticipants() {
   const currentParticipant = state.participants.find((p) => p.participant_id === state.participantId)
   const isActiveInterpreter = state.activeInterpreterId === state.participantId
-  const canReassign = ['room_coordinator', 'event_owner', 'super_admin'].includes(currentParticipant?.role) || isActiveInterpreter
+  const canReassign = Boolean(currentParticipant?.can_set_active) || isActiveInterpreter
   const activeParticipant = state.participants.find((p) => p.participant_id === state.activeInterpreterId)
   setBadge(
     elements.activeIndicator,
@@ -1311,7 +1340,7 @@ function renderParticipants() {
       tile.classList.add('active')
     }
     const canActivateSelf = participant.participant_id === state.participantId
-    const canActivate = ['interpreter', 'room_coordinator', 'event_owner', 'super_admin'].includes(participant.role) && (canReassign || canActivateSelf)
+    const canActivate = participant.can_go_live && (canReassign || canActivateSelf)
     const isThisActive = participant.participant_id === state.activeInterpreterId
 
     const top = document.createElement('div')
@@ -1324,18 +1353,19 @@ function renderParticipants() {
     const rolePill = document.createElement('span')
     rolePill.className = `participant-pill${isThisActive ? ' live' : ''}`
     
-    if (participant.role === 'interpreter') {
+    if (participant.can_go_live && !participant.can_set_active) {
       rolePill.textContent = isThisActive ? 'Active' : 'Passive'
     } else {
-      rolePill.textContent = participant.role.replace('_', ' ')
-      rolePill.style.textTransform = 'capitalize'
+      rolePill.textContent = participant.role_label || participant.role
     }
     
     top.append(nameEl, rolePill)
 
     const meta = document.createElement('div')
     meta.className = 'participant-meta'
-    meta.textContent = `${participant.language} · ${participant.channel_id}`
+    // The role in words; the pill already says Active/Passive or names the role.
+    meta.textContent = participant.can_go_live && !participant.can_set_active ? participant.role_label || '' : ''
+    meta.hidden = !meta.textContent
 
     const bottom = document.createElement('div')
     bottom.className = 'participant-bottom'
@@ -1435,13 +1465,14 @@ function renderHandoverButton() {
     elements.handoverBtn.disabled = true
     elements.handoverBtn.className = 'header-btn header-btn--handover state-grey'
     elements.handoverLabel.textContent = 'PASS MIC'
+    setTextIfChanged(elements.handoverAnnouncer, '')
     return
   }
 
   const isActive = state.activeInterpreterId === state.participantId
   const hState = state.handoffState
   const iAmInitiator = state.handoffInitiatorId === state.participantId
-  const hasPartner = state.participants.filter(p => ['interpreter', 'room_coordinator', 'event_owner', 'super_admin'].includes(p.role)).length > 1
+  const hasPartner = state.participants.filter((p) => p.can_go_live).length > 1
 
   // Remove all state classes
   elements.handoverBtn.classList.remove('state-grey', 'state-green', 'state-flash-yellow')
@@ -1483,6 +1514,16 @@ function renderHandoverButton() {
       elements.handoverBtn.disabled = true
     }
   }
+
+  // The flashing button is the only cue that the boothmate wants a handover,
+  // so put it into words for screen reader users as well.
+  let handoverMessage = ''
+  if (elements.handoverBtn.classList.contains('state-flash-yellow')) {
+    handoverMessage = isActive
+      ? 'Your boothmate is asking for the mic. Press Pass mic to hand it over.'
+      : 'Your boothmate is offering you the mic. Press Take over to accept.'
+  }
+  setTextIfChanged(elements.handoverAnnouncer, handoverMessage)
 }
 
 /** Update the LIVE / OFF LIVE / STANDBY badge in the header */
@@ -1491,17 +1532,17 @@ function renderLiveBadge() {
   if (state.ingestConnected) {
     elements.liveBadge.classList.remove('off', 'standby')
     elements.liveBadge.classList.add('on')
-    if (elements.liveBadgeText) elements.liveBadgeText.textContent = 'LIVE'
+    setTextIfChanged(elements.liveBadgeText, 'LIVE')
   } else if (state.broadcastUnlocked && state.joined && state.activeInterpreterId === state.participantId) {
     // Coordinator has unlocked this booth and we are the active interpreter —
     // show STANDBY so the interpreter knows they are cleared to go live.
     elements.liveBadge.classList.remove('off', 'on')
     elements.liveBadge.classList.add('standby')
-    if (elements.liveBadgeText) elements.liveBadgeText.textContent = 'STANDBY'
+    setTextIfChanged(elements.liveBadgeText, 'STANDBY')
   } else {
     elements.liveBadge.classList.remove('on', 'standby')
     elements.liveBadge.classList.add('off')
-    if (elements.liveBadgeText) elements.liveBadgeText.textContent = 'OFF LIVE'
+    setTextIfChanged(elements.liveBadgeText, 'OFF LIVE')
   }
 }
 
@@ -1509,13 +1550,27 @@ function renderLiveBadge() {
 
 function setBadge(element, text, tone = '') {
   if (!element) return
-  element.textContent = text
+  setTextIfChanged(element, text)
   element.classList.remove('success', 'warning', 'danger')
   if (tone) element.classList.add(tone)
 }
 
+/** Write text only when it changes, so live regions don't announce it twice. */
+function setTextIfChanged(element, text) {
+  if (element && element.textContent !== text) element.textContent = text
+}
+
 function showError(message) {
+  const isNew = message && elements.errorBanner.textContent !== message
+  // The banner lives in the Audio Setup panel, which starts collapsed. Open it
+  // before writing the text, so the alert is in the accessibility tree when it
+  // changes and screen readers announce it.
+  const panel = elements.errorBanner.closest('details')
+  if (message && panel) panel.open = true
   elements.errorBanner.textContent = message
+  // The panel sits at the bottom of the sidebar, so bring a new error into
+  // view, but don't keep pulling the page there when the same error repeats.
+  if (isNew) elements.errorBanner.scrollIntoView({ block: 'nearest' })
 }
 
 function waitForIceGathering(peerConnection) {
