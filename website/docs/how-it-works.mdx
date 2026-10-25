@@ -399,7 +399,11 @@ Fernet-encrypted at rest and write-only. Ingest, relay and language-processing
 health are reported separately. Relay mode puts VoxBento in the YouTube path, so
 the independent WHIP mode remains the default. Operators enable relay mode once with
 `scripts/setup-youtube-relay.sh`, which reuses Caddy's certificate for RTMPS and pins the
-relay override into every deploy through `COMPOSE_FILE`. See `docs/program-relay.md`.
+relay override into every deploy through `COMPOSE_FILE`. The RTMPS hostname must
+resolve directly to the server: Cloudflare's standard web proxy does not carry
+RTMPS on TCP 1936. Production uses `rtmps.voxbento.com`; Caddy manages its certificate,
+while MediaMTX terminates the encoder connection. The cloud firewall must allow
+inbound TCP 1936 as well. See `docs/program-relay.md`.
 
 ## Production deployment
 
