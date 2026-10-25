@@ -87,10 +87,11 @@ def build_rate_limit_response(
     headers: dict[str, str] = {}
     limiter_obj = getattr(getattr(request, "app", None), "state", None)
     app_limiter = getattr(limiter_obj, "limiter", limiter)
+    underlying_limiter = getattr(app_limiter, "_limiter", getattr(app_limiter, "limiter", None))
 
-    if view_limit and hasattr(app_limiter, "_limiter"):
+    if view_limit and underlying_limiter is not None:
         try:
-            window_stats = app_limiter._limiter.get_window_stats(view_limit[0], *view_limit[1])
+            window_stats = underlying_limiter.get_window_stats(view_limit[0], *view_limit[1])
             reset_time = float(window_stats[0])
             now = time.time()
             reset_at = int(math.ceil(reset_time))

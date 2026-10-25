@@ -518,7 +518,8 @@ class TestRateLimitResponsesAndHeaders:
                 return (known_reset, 0)
 
         class MockAppLimiter:
-            limiter = MockLimiterBackend()
+            _limiter = MockLimiterBackend()
+            limiter = _limiter
 
         class MockState:
             limiter = MockAppLimiter()
