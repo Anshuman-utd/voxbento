@@ -88,9 +88,9 @@ def build_rate_limit_response(
     limiter_obj = getattr(getattr(request, "app", None), "state", None)
     app_limiter = getattr(limiter_obj, "limiter", limiter)
 
-    if view_limit and hasattr(app_limiter, "limiter"):
+    if view_limit and hasattr(app_limiter, "_limiter"):
         try:
-            window_stats = app_limiter.limiter.get_window_stats(view_limit[0], *view_limit[1])
+            window_stats = app_limiter._limiter.get_window_stats(view_limit[0], *view_limit[1])
             reset_time = float(window_stats[0])
             now = time.time()
             reset_at = int(math.ceil(reset_time))
@@ -149,7 +149,7 @@ def check_rate_limit_account(
     item = parse_limit(limit_str)
     account_key = hash_account_key(norm, action=action)
 
-    if not limiter.limiter.hit(item, account_key):
+    if not limiter._limiter.hit(item, account_key):
         request.state.view_rate_limit = (item, [account_key])
         return build_rate_limit_response(request, (item, [account_key]))
 
