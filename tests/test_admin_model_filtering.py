@@ -177,8 +177,8 @@ async def test_room_detail_template_provider_model_filtering(admin_client, seed_
     with open(room_detail_js_path, "r", encoding="utf-8") as f:
         room_js = f.read()
 
-    assert "import { initProviderModelFiltering } from './admin.js';" in room_js
-    assert "initProviderModelFiltering();" in room_js
+    assert "import { initProviderModelFiltering } from './admin.js';" not in room_js
+    assert "window.initProviderModelFiltering" in room_js
     assert "function filterModels" not in room_js, "room-detail.js must not define a duplicate filterModels function"
 
 
@@ -357,7 +357,8 @@ class MockSelect {
   }
 }
 
-const { initProviderModelPair, initProviderModelFiltering } = await import('./portal/static/js/admin.js');
+await import('./portal/static/js/admin.js');
+const { initProviderModelPair, initProviderModelFiltering } = globalThis;
 
 // 1. Initial filtering on load
 const providerSelect = new MockSelect('provider', [
@@ -608,6 +609,7 @@ globalThis.document = {
   addEventListener: () => {}
 };
 
+await import('./portal/static/js/admin.js');
 await import('./portal/static/js/room-detail.js');
 
 if (model.value !== 'tiny') throw new Error('Initial model should be tiny');

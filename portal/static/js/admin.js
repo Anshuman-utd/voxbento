@@ -142,7 +142,7 @@ function isOptionCompatible(opt, selectedProvider) {
  * @param {HTMLSelectElement} providerSelect
  * @param {HTMLSelectElement} modelSelect
  */
-export function initProviderModelPair(providerSelect, modelSelect) {
+function initProviderModelPair(providerSelect, modelSelect) {
   if (!providerSelect || !modelSelect) return;
 
   if (!providerSelect._filterBoundModels) {
@@ -198,7 +198,7 @@ export function initProviderModelPair(providerSelect, modelSelect) {
  * Scans for dropdown pairs configured with data-provider-filter or data-model-filter
  * and initializes filtering for each pair.
  */
-export function initProviderModelFiltering() {
+function initProviderModelFiltering() {
   document.querySelectorAll('select[data-provider-filter]').forEach((providerSelect) => {
     const targetId = providerSelect.dataset.providerFilter;
     if (!targetId) return;
@@ -221,7 +221,12 @@ if (typeof window !== 'undefined') {
   window.initProviderModelFiltering = initProviderModelFiltering;
 }
 
-if (document.readyState !== 'loading') {
+if (typeof globalThis !== 'undefined') {
+  globalThis.initProviderModelPair = initProviderModelPair;
+  globalThis.initProviderModelFiltering = initProviderModelFiltering;
+}
+
+if (typeof document !== 'undefined' && document.readyState !== 'loading') {
   initProviderModelFiltering();
 }
 

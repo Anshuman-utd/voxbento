@@ -1,8 +1,6 @@
 // Room page (owner view): tabs, provider/model pickers and the translation language picker.
 // Values the page needs come from data attributes on #room-detail (no inline script).
 
-import { initProviderModelFiltering } from './admin.js';
-
 const root = document.getElementById('room-detail');
 
 // ── Tabs ────────────────────────────────────────────────────────────────
@@ -67,7 +65,9 @@ function initTabs() {
 // ── Captions & translation pickers (moved unchanged from the page) ───────
 
 function initPickers() {
-  initProviderModelFiltering();
+  if (typeof window !== 'undefined' && typeof window.initProviderModelFiltering === 'function') {
+    window.initProviderModelFiltering();
+  }
 
   const transProviderSelect = document.getElementById('floor_translation_provider');
     const transModelSelect = document.getElementById('floor_translation_model');
