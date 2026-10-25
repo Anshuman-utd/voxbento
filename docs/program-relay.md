@@ -203,6 +203,43 @@ It is safe to re-run. It:
    relay and that port 1936 presents a valid certificate.
 
 Then open **TCP 1936** in the firewall / cloud security group. Nothing else becomes public.
+For EC2, select the instance's security group → **Inbound rules → Edit inbound rules**
+and add **Custom TCP**, port **1936**, source the encoder's public IP (or
+`0.0.0.0/0` for organizers connecting from varying networks). Save the rule.
+
+### Websites behind Cloudflare
+
+Cloudflare's standard web proxy does not carry RTMPS on port 1936. Use a separate
+**DNS-only** A record pointing to the server. The production Caddyfile includes
+`rtmps.voxbento.com` so Caddy obtains and renews its certificate; Caddy does not proxy
+the RTMPS stream. Deploy/reload that Caddyfile and wait for certificate issuance first.
+
+For the voxbento.com deployment, set this value in `.env` (the setup script preserves
+an existing public base, even when `--host` is supplied):
+
+```dotenv
+PROGRAM_RTMPS_PUBLIC_BASE=rtmps://rtmps.voxbento.com:1936
+```
+
+Then select the matching managed certificate explicitly, replacing an old certificate
+directory setting if necessary:
+
+```bash
+scripts/setup-youtube-relay.sh --host rtmps.voxbento.com \
+  --cert-dir /var/lib/caddy/.local/share/caddy/certificates/acme-v02.api.letsencrypt.org-directory/rtmps.voxbento.com \
+  --cert-name rtmps.voxbento.com
+```
+
+Use the actual certificate directory if Caddy uses another issuer. Other deployments
+should substitute their own DNS-only hostname in both Caddy and the relay settings.
+Check port 1936 **from another machine**: the setup script's loopback TLS check cannot
+detect a blocked cloud security group or a proxied DNS record. For example:
+
+```bash
+openssl s_client -connect rtmps.voxbento.com:1936 -servername rtmps.voxbento.com \
+  -verify_hostname rtmps.voxbento.com -verify_return_error </dev/null
+```
+
 Keep **one portal replica** (ownership and reconciliation are process-local). Optional
 `.env` settings: `PROGRAM_RELAY_MAX` (default 4), `PROGRAM_RELAY_ALLOWED_HOSTS`.
 
