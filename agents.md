@@ -283,6 +283,13 @@ Password sign-in requires `User.email_verified`; everyone, admins included, sign
 at `/login` (`login` rate-limit bucket, 10 attempts per normalized email per hour).
 `/admin/login` only redirects to `/login?next=/admin/`.
 
+Registration protection lives in `portal/registration_protection.py`. Throttle
+by the ASGI-resolved client IP, never raw forwarding headers. When
+`REGISTRATION_TURNSTILE_ENABLED` is true, validate Cloudflare success, hostname
+and `register` action before signup side effects; service failures must reject
+the signup. Turnstile defaults off for compatible rollout. See
+`docs/registration-protection.md` for configuration and proxy trust.
+
 Production deployments validate a separate candidate checkout before advancing
 the live checkout. Portal source and dependencies must come from the built image,
 with persistent data volumes retained under the `voxbento` Compose project.

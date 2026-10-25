@@ -294,6 +294,17 @@ memberships allow. Operators should maintain at least two active administrator
 accounts; the [admin-login migration guide](https://github.com/fossasia/voxbento/blob/dev/docs/admin-password-removal-migration.md)
 documents the controlled recovery procedure.
 
+Registration has a configurable per-client-IP limit (20 attempts per minute by
+default). Operators can enable Cloudflare Turnstile on `/register`; the server
+validates the token's success, hostname and `register` action before hashing a
+password, creating an unverified account, or queueing verification email.
+Rejected challenges return 403 and verification-service outages return 503.
+The form preserves name/email and offers a fresh challenge. Turnstile defaults
+to disabled so existing deployments work until keys are provisioned. Login,
+invites and real-time media routes are unaffected. See the
+[registration protection guide](https://github.com/fossasia/voxbento/blob/dev/docs/registration-protection.md)
+for enabling it, proxy trust requirements and Cloudflare edge protection.
+
 ## Hosting access requests
 
 Creating events requires hosting access (`users.can_host`). Signed-in users without

@@ -49,6 +49,13 @@ Interpreters monitor the floor session and broadcast high-fidelity translation d
 
 ## 🏗️ Architecture
 
+**Signup abuse protection:** Registration limits each resolved client IP to 20
+attempts per minute. Enable server-verified Cloudflare Turnstile by configuring
+`TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, and
+`REGISTRATION_TURNSTILE_ENABLED=true`. Turnstile is off by default for compatible
+rollout; see [registration protection](docs/registration-protection.md) for
+setup, trusted proxies, failure behavior and rollback.
+
 VoxBento isolates the real-time media plane from application coordination. Media streams flow directly through **MediaMTX**, ensuring that Python never processes or relays live interpreter microphone data.
 
 ```
