@@ -96,6 +96,7 @@ var nextStartTime = 0;
 var currentAudioDelayMs = 0;
 var currentRoomId = null;
 var currentSourceType = null;
+var whepAudioLive = false;
 /** @type {ReturnType<typeof window.AudioScheduler.create>|null} */
 var audioScheduler = null;
 
@@ -125,14 +126,17 @@ function showAudioPlayer(show) {
 }
 
 function onState(s) {
-  if (s.peerConnection === "connected" && s.audioActive) {
+  whepAudioLive = s.peerConnection === "connected" && s.audioActive;
+  if (whepAudioLive) {
     setStatus("Live (WebRTC)", "live");
     showAudioPlayer(true);
   } else if (s.peerConnection === "connecting" || s.ice === "checking") {
     setStatus("Connecting...", "recovering");
   } else if (
     s.peerConnection === "failed" ||
-    s.peerConnection === "disconnected"
+    s.peerConnection === "disconnected" ||
+    // A failed WHEP request schedules a retry before ICE ever starts.
+    s.retrying
   ) {
     setStatus("Reconnecting...", "recovering");
   } else if (s.peerConnection === "connected") {
@@ -205,6 +209,8 @@ function stopCurrentStream() {
   audioEl.muted = false;
   document.getElementById("caption-history").innerHTML = "";
   document.getElementById("caption-current").innerHTML = "";
+  followCaptions = true;
+  document.getElementById("waiting-text").classList.remove("listener-hidden");
 
   setStatus("Waiting for selection...", "waiting");
 }
@@ -400,10 +406,29 @@ function openCaptionsWs(boothId) {
   };
 }
 
+// Follow new captions only until the listener scrolls away from the end, so
+// reading back isn't undone by the next partial. Decided on scroll rather than
+// per caption because rows can grow after they render (late styles, wrapping)
+// without the listener moving.
+var CAPTIONS_FOLLOW_THRESHOLD_PX = 40;
+var followCaptions = true;
+var captionsAutoScrollTop = 0;
+
+function scrollCaptionsToEnd() {
+  captionsBox.scrollTop = captionsBox.scrollHeight;
+  captionsAutoScrollTop = captionsBox.scrollTop;
+}
+
+captionsBox.addEventListener("scroll", function () {
+  followCaptions =
+    captionsBox.scrollTop === captionsAutoScrollTop ||
+    captionsBox.scrollHeight - captionsBox.scrollTop - captionsBox.clientHeight <=
+      CAPTIONS_FOLLOW_THRESHOLD_PX;
+});
+
 function renderItem(data) {
   var historyBox = document.getElementById("caption-history");
   var currentBox = document.getElementById("caption-current");
-  var captionsBox = document.getElementById("live-captions");
   var mode = captionModeSelect ? captionModeSelect.value : "original";
 
   if (data.type === "caption") {
@@ -457,7 +482,7 @@ function renderItem(data) {
     } else if (data.status === "clear") {
       currentBox.textContent = "";
     }
-    captionsBox.scrollTop = captionsBox.scrollHeight;
+    if (followCaptions) scrollCaptionsToEnd();
   } else if (data.type === "translation") {
     if (data.language_code === translationLangSelect.value) {
       var tgtLangOpt =
@@ -500,7 +525,7 @@ function renderItem(data) {
         while (historyBox.children.length > 50)
           historyBox.removeChild(historyBox.firstChild);
       }
-      captionsBox.scrollTop = captionsBox.scrollHeight;
+      if (followCaptions) scrollCaptionsToEnd();
     }
   }
 }
@@ -1089,14 +1114,14 @@ function applyTtsOverlay() {
       setStatus("Live (" + langName + " TTS)", "live");
     } else {
       audioEl.muted = false;
-      if (currentRoomId && languageSelect.value && !pendingWhepUrl) {
+      if (whepAudioLive) {
         setStatus("Live (WebRTC + Translation)", "live");
       }
     }
   } else {
     audioEl.muted = false;
-    // If we are currently connected to WHEP, refresh the badge to WebRTC
-    if (currentRoomId && languageSelect.value && !pendingWhepUrl) {
+    // If WHEP audio is already playing, refresh the badge to WebRTC
+    if (whepAudioLive) {
       setStatus("Live (WebRTC)", "live");
     }
   }
