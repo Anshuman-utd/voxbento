@@ -104,7 +104,12 @@ async def admin_client(seeded_admin):
 async def seed_event_room_booth():
     async with get_session() as s:
         event = await create_event(s, slug="testcon", display_name="TestCon 2026")
+        event.transcription_api_enabled = True
+        event.encrypted_openai_api_key = b"enc_key"
+        event.encrypted_deepgram_api_key = b"enc_key"
+        event.encrypted_elevenlabs_api_key = b"enc_key"
         room = await create_room(s, event_id=event.id, display_name="Main Hall")
+        room.floor_transcription_enabled = True
         booth = await create_booth(
             s,
             event_id=event.id,
@@ -136,13 +141,12 @@ async def test_room_detail_template_provider_model_filtering(admin_client, seed_
         html,
     ), "floor_transcription_model must declare data-model-filter='floor_transcription_provider'"
 
-    # Provider options are preserved
-    for provider in ("none", "local", "openai", "deepgram", "nvidia", "elevenlabs"):
+    # Available speech provider options are present
+    for provider in ("local", "openai", "deepgram", "elevenlabs"):
         assert f'value="{provider}"' in html
 
     # Model options with data-provider attributes are preserved
     for model, provider in [
-        ("none", "none"),
         ("tiny", "local"),
         ("base", "local"),
         ("gpt-realtime-whisper", "openai"),
